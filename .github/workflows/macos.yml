@@ -32,8 +32,9 @@ jobs:
           command -v xcodegen >/dev/null || brew install xcodegen
           swift scripts/icon.swift Sources/Assets.xcassets/AppIcon.appiconset
           xcodegen generate
+          git diff --exit-code -- DemichevVoice.xcodeproj/project.pbxproj DemichevVoice.xcodeproj/xcshareddata/xcschemes
           mkdir -p build
-          xcodebuild -resolvePackageDependencies -project DemichevVoice.xcodeproj -scheme DemichevVoice
+          xcodebuild -resolvePackageDependencies -project DemichevVoice.xcodeproj -scheme DemichevVoice -onlyUsePackageVersionsFromResolvedFile
           zip -r build/generated.zip DemichevVoice.xcodeproj Sources/Assets.xcassets
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -45,7 +46,7 @@ jobs:
           set -o pipefail
           xcodebuild -project DemichevVoice.xcodeproj -scheme DemichevVoice \
             -destination 'platform=macOS,arch=arm64' -derivedDataPath build/Debug \
-            -resultBundlePath build/Tests.xcresult CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= test \
+            -resultBundlePath build/Tests.xcresult -onlyUsePackageVersionsFromResolvedFile CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= test \
             2>&1 | tee build/tests.log
       - name: Build ad-hoc installer (not notarized)
         run: bash scripts/package.sh

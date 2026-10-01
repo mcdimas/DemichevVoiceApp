@@ -5,6 +5,7 @@ mkdir -p build/installers
 xcodebuild -project DemichevVoice.xcodeproj -scheme DemichevVoice \
   -configuration Release -destination 'generic/platform=macOS' \
   -derivedDataPath build/Release ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+  -onlyUsePackageVersionsFromResolvedFile \
   CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= build > build/release.log 2>&1
 APP="$PWD/build/Release/Build/Products/Release/Demichev Voice.app"
 PLIST="$APP/Contents/Info.plist"

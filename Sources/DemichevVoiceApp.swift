@@ -8,11 +8,13 @@ import AVFoundation
     private let underTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil || NSClassFromString("XCTestCase") != nil
     var body: some Scene {
         WindowGroup("Demichev Voice", id: "voice") {
+            if underTest { EmptyView() } else {
             VoiceWindow(controller: controller)
                 .preferredColorScheme(.light)
                 .task { if !underTest && !ProcessInfo.processInfo.arguments.contains("--check-audio") && !ProcessInfo.processInfo.arguments.contains("--install-models") { controller.start() } }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in if !underTest { controller.refreshPermissions() } }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in controller.cancel() }
+            }
         }
         .defaultSize(width: 850, height: 720)
         .commands {
@@ -20,7 +22,7 @@ import AVFoundation
             CommandMenu("Диктовка") { Button("Отмена") { controller.cancel() }.keyboardShortcut(.escape, modifiers: []) }
         }
         MenuBarExtra("Demichev Voice", systemImage: "mic.circle") {
-            MenuContent(controller: controller)
+            if !underTest { MenuContent(controller: controller) }
         }
     }
 }

@@ -14,7 +14,7 @@ enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, r
 @MainActor @Observable final class VoiceController {
     private let defaults: UserDefaults
     private let clipboard: NSPasteboard
-    private let store = ModelStore()
+    private let store: ModelStore
     private let recognizer = RecognitionEngine()
     private let capture = AudioCapture()
     private let paste = PasteCoordinator()
@@ -41,8 +41,9 @@ enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, r
     var busy: Bool { [.preparing, .removing, .recording, .recognizing, .cancelling].contains(phase) }
     var canCancel: Bool { [.preparing, .recording, .recognizing].contains(phase) }
 
-    init(defaults: UserDefaults = .standard, clipboard: NSPasteboard = .general) {
+    init(defaults: UserDefaults = .standard, clipboard: NSPasteboard = .general, modelRoot: URL = AppStorage.models) {
         self.defaults = defaults; self.clipboard = clipboard
+        store = ModelStore(root: modelRoot)
         preferences = VoicePreferences.read(defaults)
     }
 
@@ -53,7 +54,7 @@ enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, r
         KeyboardShortcuts.onKeyDown(for: .recordVoice) { [weak self] in self?.shortcutDown() }
         KeyboardShortcuts.onKeyUp(for: .recordVoice) { [weak self] in self?.shortcutUp() }
         KeyboardShortcuts.onKeyDown(for: .cancelVoice) { [weak self] in self?.cancel() }
-        KeyboardShortcuts.disable(.cancelVoice)
+        cancelShortcut(enabled: false)
         if ModelStore.isPresent(preferences.model) { prepare(download: false) }
     }
 
@@ -87,7 +88,7 @@ enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, r
         message = "Подготовка модели…"
         let model = preferences.model
         let id = UUID(); operationID = id
-        KeyboardShortcuts.enable(.cancelVoice)
+        cancelShortcut(enabled: true)
         operation = Task { [weak self] in
             guard let self else { return }
             defer { finishOperation() }
@@ -130,7 +131,7 @@ enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, r
         do { try capture.begin(inputUID: preferences.inputUID) }
         catch { paste.reset(); self.error = error.localizedDescription; return }
         phase = .recording; message = "Говорите. Отпустите клавиши для завершения."
-        startedAt = Date(); KeyboardShortcuts.enable(.cancelVoice)
+        startedAt = Date(); cancelShortcut(enabled: true)
         meter = Task { [weak self] in
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
@@ -188,11 +189,15 @@ enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, r
         shortcutHeld = false; meter?.cancel(); meter = nil; level = 0
         capture.discard(); paste.reset()
         if let operation { phase = .cancelling; message = "Завершаем отмену…"; operation.cancel() }
-        else { phase = ready ? .ready : .idle; message = "Запись отменена."; KeyboardShortcuts.disable(.cancelVoice) }
+        else { phase = ready ? .ready : .idle; message = "Запись отменена."; cancelShortcut(enabled: false) }
     }
     private func finishOperation() {
         operation = nil; phase = ready ? .ready : .idle
-        KeyboardShortcuts.disable(.cancelVoice)
+        cancelShortcut(enabled: false)
+    }
+    private func cancelShortcut(enabled: Bool) {
+        guard started else { return }
+        if enabled { KeyboardShortcuts.enable(.cancelVoice) } else { KeyboardShortcuts.disable(.cancelVoice) }
     }
     private func report(_ failure: Error) {
         if Task.isCancelled || failure is CancellationError { message = "Операция отменена. Проверенные файлы сохранены." }

@@ -128,12 +128,30 @@ final class TextTests: XCTestCase {
         XCTAssertFalse(controller.canRecord)
     }
     func testCancelledPreparationCannotClaimReadiness() async {
-        let controller = VoiceController(defaults: UserDefaults(suiteName: UUID().uuidString)!, clipboard: .withUniqueName())
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let clipboard = NSPasteboard.withUniqueName()
+        defer { try? FileManager.default.removeItem(at: root); clipboard.releaseGlobally() }
+        let controller = VoiceController(defaults: UserDefaults(suiteName: UUID().uuidString)!, clipboard: clipboard, modelRoot: root)
         controller.prepare(download: false)
         controller.cancel()
         for _ in 0..<50 where controller.phase == .cancelling { try? await Task.sleep(for: .milliseconds(10)) }
         XCTAssertEqual(controller.phase, .idle)
         XCTAssertFalse(controller.canRecord)
+    }
+    func testRemovalCannotClaimToBeCancellable() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let folder = ModelStore.folder(.parakeet, root: root)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let controller = VoiceController(defaults: UserDefaults(suiteName: UUID().uuidString)!, modelRoot: root)
+        controller.removeModel()
+        XCTAssertEqual(controller.phase, .removing)
+        XCTAssertFalse(controller.canCancel)
+        controller.cancel()
+        XCTAssertEqual(controller.phase, .removing)
+        for _ in 0..<50 where controller.phase == .removing { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(controller.phase, .idle)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
     }
     func testAppIdentityAndBundledLicenses() throws {
         XCTAssertEqual(Bundle.main.bundleIdentifier, "ru.demichev.voice")
