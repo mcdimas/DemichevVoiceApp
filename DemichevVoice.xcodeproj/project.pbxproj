@@ -1,0 +1,600 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		003049EB001DE6B56D75E4EE /* WhisperKit.txt in Resources */ = {isa = PBXBuildFile; fileRef = 20E3BF69BD4A67CD64AC37C5 /* WhisperKit.txt */; };
+		07F6DAFD19B664CE8D65FCC6 /* Whisper.txt in Resources */ = {isa = PBXBuildFile; fileRef = 3813C75FDED0B2F72D332C04 /* Whisper.txt */; };
+		2364916492EE41D9E52852E7 /* FluidAudio.txt in Resources */ = {isa = PBXBuildFile; fileRef = 26C3A02CD230AF9308DBA0D9 /* FluidAudio.txt */; };
+		23ECA0F30955CA476811F88C /* KeyboardShortcuts.txt in Resources */ = {isa = PBXBuildFile; fileRef = ADB7C1017EE49BBBFEBC4678 /* KeyboardShortcuts.txt */; };
+		2F81419D48F1D502F6AB7D39 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = F908E80F8BFEE9B696EB6431 /* KeyboardShortcuts */; };
+		52E2CBE163D11DDB5BFBE35B /* ModelStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECF00E3812CCB592457DA29E /* ModelStore.swift */; };
+		5A2AEC9DB0B04D63D5D5151D /* fastcluster.txt in Resources */ = {isa = PBXBuildFile; fileRef = B48EFB98D1702EAFCFD10A7B /* fastcluster.txt */; };
+		5B15FF6E34AAE2CDBAA87995 /* RecognitionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1493D631F2887579D5D1B736 /* RecognitionEngine.swift */; };
+		7B9BA605C7F354DFDC6A67F4 /* SwiftArgumentParser.txt in Resources */ = {isa = PBXBuildFile; fileRef = F45ECC93E8CDF749D17BE311 /* SwiftArgumentParser.txt */; };
+		7C6435939C122D5029D0A9EE /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 28C6474DD931193B037BED71 /* FluidAudio */; };
+		7CF1823ECC9BEC12F440F386 /* parakeet.json in Resources */ = {isa = PBXBuildFile; fileRef = 342FF4DC8562B97BEA6A9A52 /* parakeet.json */; };
+		7DD65946271707E4DD92503C /* AudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F04B5E987033D4A3224AF47 /* AudioCapture.swift */; };
+		80AAA2794AA6C272D82CDDD9 /* VoiceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8A51B60C2E3E864B0D4D3F6 /* VoiceController.swift */; };
+		8421BB1BAB8024495F07F6D9 /* DemichevVoiceApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBEA5AEA9F8375630931D13A /* DemichevVoiceApp.swift */; };
+		8C50A4F98AD30C165D593BC8 /* ModelCredits.txt in Resources */ = {isa = PBXBuildFile; fileRef = D6A6811F08C48366E005333B /* ModelCredits.txt */; };
+		922486424171FD03BAF03E50 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 1BB2C5CCD266579D8BC4458A /* LICENSE */; };
+		B484FE30B9EA1903525792FD /* Domain.swift in Sources */ = {isa = PBXBuildFile; fileRef = A106531AC44C5F509B78F8F1 /* Domain.swift */; };
+		BA280DA2E2DD1CA5FEB1CE65 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 1038E6F59B1B8D45A1CBA0EA /* WhisperKit */; };
+		CA8D7C56F3B964DD915EC28D /* NemoTextProcessing.txt in Resources */ = {isa = PBXBuildFile; fileRef = 3071F57C26DB2FB4ABDE649B /* NemoTextProcessing.txt */; };
+		E360DC1EA807E9FC3904C074 /* VoiceWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0CA0868510F2A3C6EC053B6 /* VoiceWindow.swift */; };
+		F198AA5CA35A8ED875ECB1CF /* whisper.json in Resources */ = {isa = PBXBuildFile; fileRef = CDDBFD512D63189E2DFF24F7 /* whisper.json */; };
+		F54B620CC502048BBD168BF7 /* CoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F5B3EC2E474ADFFD195CE58 /* CoreTests.swift */; };
+		FC87D1DB669A54F0BA02F35C /* vbx.txt in Resources */ = {isa = PBXBuildFile; fileRef = AAA8DBE18EE5A65279783CD5 /* vbx.txt */; };
+		FCC11C9E0D2413D7F9D0B1B8 /* PasteCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8625D92F1621C3052A7B79C9 /* PasteCoordinator.swift */; };
+		FF23AF01298471065D328896 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8F1BC99EC2AC4835DD290380 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		16555214F953A868343AF37C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1B9696B818394781C46AC7B9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = EDB46570CF32A2D4AEB8F238;
+			remoteInfo = DemichevVoice;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		1493D631F2887579D5D1B736 /* RecognitionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognitionEngine.swift; sourceTree = "<group>"; };
+		1BB2C5CCD266579D8BC4458A /* LICENSE */ = {isa = PBXFileReference; path = LICENSE; sourceTree = "<group>"; };
+		20E3BF69BD4A67CD64AC37C5 /* WhisperKit.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = WhisperKit.txt; sourceTree = "<group>"; };
+		26C3A02CD230AF9308DBA0D9 /* FluidAudio.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = FluidAudio.txt; sourceTree = "<group>"; };
+		3071F57C26DB2FB4ABDE649B /* NemoTextProcessing.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = NemoTextProcessing.txt; sourceTree = "<group>"; };
+		342FF4DC8562B97BEA6A9A52 /* parakeet.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = parakeet.json; sourceTree = "<group>"; };
+		3813C75FDED0B2F72D332C04 /* Whisper.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Whisper.txt; sourceTree = "<group>"; };
+		4F04B5E987033D4A3224AF47 /* AudioCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCapture.swift; sourceTree = "<group>"; };
+		5F5B3EC2E474ADFFD195CE58 /* CoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreTests.swift; sourceTree = "<group>"; };
+		8625D92F1621C3052A7B79C9 /* PasteCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteCoordinator.swift; sourceTree = "<group>"; };
+		8F1BC99EC2AC4835DD290380 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A106531AC44C5F509B78F8F1 /* Domain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Domain.swift; sourceTree = "<group>"; };
+		A5C20E8A021AA9D21919187A /* DemichevVoiceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DemichevVoiceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AAA8DBE18EE5A65279783CD5 /* vbx.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = vbx.txt; sourceTree = "<group>"; };
+		ADB7C1017EE49BBBFEBC4678 /* KeyboardShortcuts.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = KeyboardShortcuts.txt; sourceTree = "<group>"; };
+		B48EFB98D1702EAFCFD10A7B /* fastcluster.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = fastcluster.txt; sourceTree = "<group>"; };
+		C8A51B60C2E3E864B0D4D3F6 /* VoiceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceController.swift; sourceTree = "<group>"; };
+		CDDBFD512D63189E2DFF24F7 /* whisper.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = whisper.json; sourceTree = "<group>"; };
+		D35C355B1D7CDBFFFC190FAF /* Demichev Voice.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Demichev Voice.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		D6A6811F08C48366E005333B /* ModelCredits.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ModelCredits.txt; sourceTree = "<group>"; };
+		E0CA0868510F2A3C6EC053B6 /* VoiceWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWindow.swift; sourceTree = "<group>"; };
+		EBEA5AEA9F8375630931D13A /* DemichevVoiceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemichevVoiceApp.swift; sourceTree = "<group>"; };
+		ECF00E3812CCB592457DA29E /* ModelStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelStore.swift; sourceTree = "<group>"; };
+		F45ECC93E8CDF749D17BE311 /* SwiftArgumentParser.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = SwiftArgumentParser.txt; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		E36C0A4E9CDB3B3B425B53F3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BA280DA2E2DD1CA5FEB1CE65 /* WhisperKit in Frameworks */,
+				7C6435939C122D5029D0A9EE /* FluidAudio in Frameworks */,
+				2F81419D48F1D502F6AB7D39 /* KeyboardShortcuts in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1BA465949A7E09B98FB55DC2 = {
+			isa = PBXGroup;
+			children = (
+				1BB2C5CCD266579D8BC4458A /* LICENSE */,
+				42BCC2FBDF7E2D6B6EC24D5F /* Resources */,
+				53497BC7ECC59E0965CAF53D /* Sources */,
+				9217FE865D8B668F7E23CB99 /* Tests */,
+				9AE4ACAB5C68A0ED445586B3 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		2D02CD2360014A1840A43174 /* Catalogs */ = {
+			isa = PBXGroup;
+			children = (
+				342FF4DC8562B97BEA6A9A52 /* parakeet.json */,
+				CDDBFD512D63189E2DFF24F7 /* whisper.json */,
+			);
+			path = Catalogs;
+			sourceTree = "<group>";
+		};
+		42BCC2FBDF7E2D6B6EC24D5F /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				D6A6811F08C48366E005333B /* ModelCredits.txt */,
+				2D02CD2360014A1840A43174 /* Catalogs */,
+				F0A3DF1F389ED580DC29A622 /* Licenses */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		53497BC7ECC59E0965CAF53D /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				8F1BC99EC2AC4835DD290380 /* Assets.xcassets */,
+				4F04B5E987033D4A3224AF47 /* AudioCapture.swift */,
+				EBEA5AEA9F8375630931D13A /* DemichevVoiceApp.swift */,
+				A106531AC44C5F509B78F8F1 /* Domain.swift */,
+				ECF00E3812CCB592457DA29E /* ModelStore.swift */,
+				8625D92F1621C3052A7B79C9 /* PasteCoordinator.swift */,
+				1493D631F2887579D5D1B736 /* RecognitionEngine.swift */,
+				C8A51B60C2E3E864B0D4D3F6 /* VoiceController.swift */,
+				E0CA0868510F2A3C6EC053B6 /* VoiceWindow.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		9217FE865D8B668F7E23CB99 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				5F5B3EC2E474ADFFD195CE58 /* CoreTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		9AE4ACAB5C68A0ED445586B3 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				D35C355B1D7CDBFFFC190FAF /* Demichev Voice.app */,
+				A5C20E8A021AA9D21919187A /* DemichevVoiceTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		F0A3DF1F389ED580DC29A622 /* Licenses */ = {
+			isa = PBXGroup;
+			children = (
+				B48EFB98D1702EAFCFD10A7B /* fastcluster.txt */,
+				26C3A02CD230AF9308DBA0D9 /* FluidAudio.txt */,
+				ADB7C1017EE49BBBFEBC4678 /* KeyboardShortcuts.txt */,
+				3071F57C26DB2FB4ABDE649B /* NemoTextProcessing.txt */,
+				F45ECC93E8CDF749D17BE311 /* SwiftArgumentParser.txt */,
+				AAA8DBE18EE5A65279783CD5 /* vbx.txt */,
+				3813C75FDED0B2F72D332C04 /* Whisper.txt */,
+				20E3BF69BD4A67CD64AC37C5 /* WhisperKit.txt */,
+			);
+			path = Licenses;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		3C05E58B537D0170639C74F1 /* DemichevVoiceTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4CD48378ACE6ED7BD64E32BB /* Build configuration list for PBXNativeTarget "DemichevVoiceTests" */;
+			buildPhases = (
+				73158EFDE98F85FF98C6F99B /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				95D98773022165AF636E13AE /* PBXTargetDependency */,
+			);
+			name = DemichevVoiceTests;
+			packageProductDependencies = (
+			);
+			productName = DemichevVoiceTests;
+			productReference = A5C20E8A021AA9D21919187A /* DemichevVoiceTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		EDB46570CF32A2D4AEB8F238 /* DemichevVoice */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2C5F4A514DF942AA96252E51 /* Build configuration list for PBXNativeTarget "DemichevVoice" */;
+			buildPhases = (
+				2970AC6118D637EED42EC3C7 /* Sources */,
+				E872F85CFD3A11934C9118B9 /* Resources */,
+				E36C0A4E9CDB3B3B425B53F3 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DemichevVoice;
+			packageProductDependencies = (
+				1038E6F59B1B8D45A1CBA0EA /* WhisperKit */,
+				28C6474DD931193B037BED71 /* FluidAudio */,
+				F908E80F8BFEE9B696EB6431 /* KeyboardShortcuts */,
+			);
+			productName = DemichevVoice;
+			productReference = D35C355B1D7CDBFFFC190FAF /* Demichev Voice.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		1B9696B818394781C46AC7B9 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					3C05E58B537D0170639C74F1 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
+					EDB46570CF32A2D4AEB8F238 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = 4CE993B154BA3F34F19A7465 /* Build configuration list for PBXProject "DemichevVoice" */;
+			developmentRegion = ru;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				ru,
+			);
+			mainGroup = 1BA465949A7E09B98FB55DC2;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				69138C40D0F06830E75BFB45 /* XCRemoteSwiftPackageReference "FluidAudio" */,
+				15E6EDCB3252C4A4BD8A2F50 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
+				7ED671E3A9549AA58493F32F /* XCRemoteSwiftPackageReference "argmax-oss-swift" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 9AE4ACAB5C68A0ED445586B3 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				EDB46570CF32A2D4AEB8F238 /* DemichevVoice */,
+				3C05E58B537D0170639C74F1 /* DemichevVoiceTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		E872F85CFD3A11934C9118B9 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FF23AF01298471065D328896 /* Assets.xcassets in Resources */,
+				2364916492EE41D9E52852E7 /* FluidAudio.txt in Resources */,
+				23ECA0F30955CA476811F88C /* KeyboardShortcuts.txt in Resources */,
+				922486424171FD03BAF03E50 /* LICENSE in Resources */,
+				8C50A4F98AD30C165D593BC8 /* ModelCredits.txt in Resources */,
+				CA8D7C56F3B964DD915EC28D /* NemoTextProcessing.txt in Resources */,
+				7B9BA605C7F354DFDC6A67F4 /* SwiftArgumentParser.txt in Resources */,
+				07F6DAFD19B664CE8D65FCC6 /* Whisper.txt in Resources */,
+				003049EB001DE6B56D75E4EE /* WhisperKit.txt in Resources */,
+				5A2AEC9DB0B04D63D5D5151D /* fastcluster.txt in Resources */,
+				7CF1823ECC9BEC12F440F386 /* parakeet.json in Resources */,
+				FC87D1DB669A54F0BA02F35C /* vbx.txt in Resources */,
+				F198AA5CA35A8ED875ECB1CF /* whisper.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		2970AC6118D637EED42EC3C7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7DD65946271707E4DD92503C /* AudioCapture.swift in Sources */,
+				8421BB1BAB8024495F07F6D9 /* DemichevVoiceApp.swift in Sources */,
+				B484FE30B9EA1903525792FD /* Domain.swift in Sources */,
+				52E2CBE163D11DDB5BFBE35B /* ModelStore.swift in Sources */,
+				FCC11C9E0D2413D7F9D0B1B8 /* PasteCoordinator.swift in Sources */,
+				5B15FF6E34AAE2CDBAA87995 /* RecognitionEngine.swift in Sources */,
+				80AAA2794AA6C272D82CDDD9 /* VoiceController.swift in Sources */,
+				E360DC1EA807E9FC3904C074 /* VoiceWindow.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		73158EFDE98F85FF98C6F99B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F54B620CC502048BBD168BF7 /* CoreTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		95D98773022165AF636E13AE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = EDB46570CF32A2D4AEB8F238 /* DemichevVoice */;
+			targetProxy = 16555214F953A868343AF37C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1D0CF8EFB64FDCA03A17FDA5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		3DDE8F755B0053B18DE3ABCD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ru.demichev.voice.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Demichev Voice.app/Contents/MacOS/DemichevVoice";
+			};
+			name = Debug;
+		};
+		5709BBB51A698FED35FDF6FF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				EXECUTABLE_NAME = DemichevVoice;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Demichev Voice";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Demichev Voice использует микрофон для локальной диктовки на вашем Mac.";
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ru.demichev.voice;
+				PRODUCT_MODULE_NAME = DemichevVoice;
+				PRODUCT_NAME = "Demichev Voice";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		7577A777A7D44A3298AB760F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ru.demichev.voice.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Demichev Voice.app/Contents/MacOS/DemichevVoice";
+			};
+			name = Release;
+		};
+		88F9DA8D1A1E704C026C34D4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		DFABB2E30E75F56499DF9D23 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				EXECUTABLE_NAME = DemichevVoice;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Demichev Voice";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Demichev Voice использует микрофон для локальной диктовки на вашем Mac.";
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = ru.demichev.voice;
+				PRODUCT_MODULE_NAME = DemichevVoice;
+				PRODUCT_NAME = "Demichev Voice";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		2C5F4A514DF942AA96252E51 /* Build configuration list for PBXNativeTarget "DemichevVoice" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5709BBB51A698FED35FDF6FF /* Debug */,
+				DFABB2E30E75F56499DF9D23 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		4CD48378ACE6ED7BD64E32BB /* Build configuration list for PBXNativeTarget "DemichevVoiceTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3DDE8F755B0053B18DE3ABCD /* Debug */,
+				7577A777A7D44A3298AB760F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		4CE993B154BA3F34F19A7465 /* Build configuration list for PBXProject "DemichevVoice" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1D0CF8EFB64FDCA03A17FDA5 /* Debug */,
+				88F9DA8D1A1E704C026C34D4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		15E6EDCB3252C4A4BD8A2F50 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sindresorhus/KeyboardShortcuts";
+			requirement = {
+				kind = exactVersion;
+				version = 3.1.0;
+			};
+		};
+		69138C40D0F06830E75BFB45 /* XCRemoteSwiftPackageReference "FluidAudio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/FluidInference/FluidAudio";
+			requirement = {
+				kind = exactVersion;
+				version = 0.15.7;
+			};
+		};
+		7ED671E3A9549AA58493F32F /* XCRemoteSwiftPackageReference "argmax-oss-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/argmaxinc/argmax-oss-swift";
+			requirement = {
+				kind = exactVersion;
+				version = 1.1.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1038E6F59B1B8D45A1CBA0EA /* WhisperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7ED671E3A9549AA58493F32F /* XCRemoteSwiftPackageReference "argmax-oss-swift" */;
+			productName = WhisperKit;
+		};
+		28C6474DD931193B037BED71 /* FluidAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 69138C40D0F06830E75BFB45 /* XCRemoteSwiftPackageReference "FluidAudio" */;
+			productName = FluidAudio;
+		};
+		F908E80F8BFEE9B696EB6431 /* KeyboardShortcuts */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 15E6EDCB3252C4A4BD8A2F50 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */;
+			productName = KeyboardShortcuts;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 1B9696B818394781C46AC7B9 /* Project object */;
+}

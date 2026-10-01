@@ -1,0 +1,35 @@
+name: Real local recognition
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Build app for model verification
+        run: |
+          test "$(uname -m)" = arm64
+          mkdir -p build
+          set -o pipefail
+          xcodebuild -project DemichevVoice.xcodeproj -scheme DemichevVoice \
+            -destination 'platform=macOS,arch=arm64' -derivedDataPath build/Debug \
+            -onlyUsePackageVersionsFromResolvedFile CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= build \
+            2>&1 | tee build/integration-build.log
+      - name: Download and verify pinned models (opt-in integration only)
+        run: |
+          "build/Debug/Build/Products/Debug/Demichev Voice.app/Contents/MacOS/DemichevVoice" --install-models
+      - name: Recognize synthetic speech, silence and cancellation with network denied
+        env:
+          DEMICHEV_EXPECT_WORDS: local,speech,computer
+        run: |
+          say -v Samantha -r 140 -o build/synthetic.aiff 'This is a local speech test on my computer. The meeting starts tomorrow morning.'
+          set -o pipefail
+          bash scripts/offline-check.sh "$PWD/build/synthetic.aiff" 2>&1 | tee build/offline.log
+      - name: Save verification diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: local-recognition-diagnostics
+          path: build/*.log
