@@ -1,0 +1,9 @@
+title = "Demichev Voice"
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Public model file checksums in pinned download catalogs"
+paths = ['''Resources/Catalogs/.*\.json$''']
+regexTarget = "line"
+regexes = ['''"digest": "[a-f0-9]{40,64}"''']

@@ -1,0 +1,66 @@
+name: macOS ARM64
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - name: Gitleaks verified binary and full history scan
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -fsSLO https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          curl -fsSLO https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_checksums.txt
+          grep ' gitleaks_8.30.1_linux_x64.tar.gz$' gitleaks_8.30.1_checksums.txt | sha256sum -c -
+          tar -xzf gitleaks_8.30.1_linux_x64.tar.gz gitleaks
+          cd "$GITHUB_WORKSPACE"
+          "$RUNNER_TEMP/gitleaks" git --redact=100 --config .gitleaks.toml --log-opts='--all --full-history' .
+          "$RUNNER_TEMP/gitleaks" dir --redact=100 --config .gitleaks.toml .
+  macos:
+    needs: secrets
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Generate macOS project and icon
+        run: |
+          test "$(uname -m)" = arm64
+          xcodebuild -version
+          command -v xcodegen >/dev/null || brew install xcodegen
+          swift scripts/icon.swift Sources/Assets.xcassets/AppIcon.appiconset
+          xcodegen generate
+          mkdir -p build
+          xcodebuild -resolvePackageDependencies -project DemichevVoice.xcodeproj -scheme DemichevVoice
+          zip -r build/generated.zip DemichevVoice.xcodeproj Sources/Assets.xcassets
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: generated
+          path: build/generated.zip
+          if-no-files-found: error
+      - name: Build and unit tests without models
+        run: |
+          set -o pipefail
+          xcodebuild -project DemichevVoice.xcodeproj -scheme DemichevVoice \
+            -destination 'platform=macOS,arch=arm64' -derivedDataPath build/Debug \
+            -resultBundlePath build/Tests.xcresult CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= test \
+            2>&1 | tee build/tests.log
+      - name: Build ad-hoc installer (not notarized)
+        run: bash scripts/package.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Demichev-Voice-macOS-arm64
+          path: |
+            build/installers/*.dmg
+            build/installers/*.sha256
+          if-no-files-found: error
+      - name: Save diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostics
+          path: |
+            build/*.log
+            build/Tests.xcresult
