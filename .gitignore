@@ -1,0 +1,16 @@
+build/
+.DS_Store
+.env*
+xcuserdata/
+*.xcuserstate
+*.app/
+*.dmg
+*.p12
+*.pem
+*.key
+*.wav
+*.aiff
+*.caf
+*.m4a
+models/
+recordings/

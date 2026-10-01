@@ -1,0 +1,19 @@
+Model attribution
+
+Parakeet TDT 0.6B v3: NVIDIA, CC BY 4.0.
+https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3
+https://creativecommons.org/licenses/by/4.0/
+Core ML conversion and quantization: FluidInference.
+https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml
+The app uses Encoder_v2 and the converted model files. No training or
+fine-tuning is performed. Use of these names implies no endorsement.
+
+Whisper: OpenAI, MIT.
+https://github.com/openai/whisper
+Core ML conversion: Argmax, MIT.
+https://huggingface.co/argmaxinc/whisperkit-coreml
+https://github.com/argmaxinc/argmax-oss-swift
+
+Weights are downloaded from pinned Hugging Face revisions on user request;
+they are not distributed in this installer. The original model authors
+and converters retain their rights. See library license files as well.
