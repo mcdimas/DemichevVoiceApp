@@ -33,7 +33,7 @@ struct MenuContent: View {
         Button(controller.phase == .recording ? "Завершить запись" : "Начать запись") {
             if controller.phase == .recording { controller.endRecording() } else { controller.beginRecording() }
         }.disabled(!controller.canRecord && controller.phase != .recording)
-        Button("Отменить") { controller.cancel() }.disabled(!controller.busy)
+        Button("Отменить") { controller.cancel() }.disabled(!controller.canCancel)
         Divider()
         Button("Завершить Demichev Voice") { NSApp.terminate(nil) }
     }

@@ -69,7 +69,7 @@ struct VoiceWindow: View {
                             .accessibilityLabel("Уровень микрофона")
                         Text(String(format: "%d:%02d", controller.elapsed / 60, controller.elapsed % 60)).monospacedDigit()
                     }
-                    if [.preparing, .recognizing, .cancelling].contains(controller.phase) {
+                    if [.preparing, .removing, .recognizing, .cancelling].contains(controller.phase) {
                         if controller.phase == .preparing { ProgressView(value: controller.progress).frame(maxWidth: 300) }
                         else { ProgressView().controlSize(.small) }
                     }
@@ -77,7 +77,7 @@ struct VoiceWindow: View {
                         Button(controller.phase == .recording ? "Завершить запись" : "Начать запись") {
                             if controller.phase == .recording { controller.endRecording() } else { controller.beginRecording() }
                         }.buttonStyle(.borderedProminent).disabled(!controller.canRecord && controller.phase != .recording)
-                        if controller.busy { Button("Отменить") { controller.cancel() }.disabled(controller.phase == .cancelling) }
+                        if controller.canCancel { Button("Отменить") { controller.cancel() } }
                     }
                     if controller.phase == .idle {
                         Button("Подготовить модель") { tab = "settings" }.buttonStyle(.link)

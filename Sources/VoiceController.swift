@@ -9,7 +9,7 @@ extension KeyboardShortcuts.Name {
     static let cancelVoice = Self("demichev.cancel", initial: .init(.escape))
 }
 
-enum VoicePhase: Equatable { case idle, preparing, ready, recording, recognizing, cancelling }
+enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, recognizing, cancelling }
 
 @MainActor @Observable final class VoiceController {
     private let defaults: UserDefaults
@@ -38,7 +38,8 @@ enum VoicePhase: Equatable { case idle, preparing, ready, recording, recognizing
     private(set) var pasteAllowed = false
     var devices: [InputDevice] = []
     var canRecord: Bool { phase == .ready && microphoneAllowed }
-    var busy: Bool { [.preparing, .recording, .recognizing, .cancelling].contains(phase) }
+    var busy: Bool { [.preparing, .removing, .recording, .recognizing, .cancelling].contains(phase) }
+    var canCancel: Bool { [.preparing, .recording, .recognizing].contains(phase) }
 
     init(defaults: UserDefaults = .standard, clipboard: NSPasteboard = .general) {
         self.defaults = defaults; self.clipboard = clipboard
@@ -109,7 +110,7 @@ enum VoicePhase: Equatable { case idle, preparing, ready, recording, recognizing
     func removeModel() {
         guard !busy, operation == nil else { return }
         let model = preferences.model
-        phase = .preparing; ready = false; message = "Удаление модели…"; error = ""
+        phase = .removing; ready = false; message = "Удаление модели…"; error = ""
         operation = Task { [weak self] in
             guard let self else { return }
             defer { finishOperation() }
@@ -183,6 +184,7 @@ enum VoicePhase: Equatable { case idle, preparing, ready, recording, recognizing
     }
 
     func cancel() {
+        guard phase != .removing else { return }
         shortcutHeld = false; meter?.cancel(); meter = nil; level = 0
         capture.discard(); paste.reset()
         if let operation { phase = .cancelling; message = "Завершаем отмену…"; operation.cancel() }
