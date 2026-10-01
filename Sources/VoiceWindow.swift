@@ -187,7 +187,7 @@ struct VoiceWindow: View {
         }.padding(24).frame(width: 650, height: 520)
     }
     private var licenseText: String {
-        let names = ["LICENSE", "ModelCredits", "FluidAudio", "WhisperKit", "KeyboardShortcuts", "SwiftArgumentParser", "Whisper"]
+        let names = ["LICENSE", "ModelCredits", "FluidAudio", "WhisperKit", "KeyboardShortcuts", "SwiftArgumentParser", "Whisper", "fastcluster", "NemoTextProcessing", "vbx"]
         return names.compactMap { name in
             let url = Bundle.main.url(forResource: name, withExtension: name == "LICENSE" ? nil : "txt")
             return url.flatMap { try? String(contentsOf: $0, encoding: .utf8) }.map { "\(name)\n\n\($0)" }

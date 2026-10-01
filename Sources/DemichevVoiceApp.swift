@@ -62,6 +62,6 @@ final class VoiceAppDelegate: NSObject, NSApplicationDelegate {
                 print("OFFLINE_OK \(model.rawValue)")
             }
             exit(0)
-        } catch { fputs("OFFLINE_FAILED: \(error.localizedDescription)\n", stderr); exit(1) }
+        } catch { FileHandle.standardError.write(Data("OFFLINE_FAILED: \(error.localizedDescription)\n".utf8)); exit(1) }
     }
 }
