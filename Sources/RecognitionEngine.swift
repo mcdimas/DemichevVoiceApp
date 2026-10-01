@@ -1,0 +1,83 @@
+import Foundation
+import CoreML
+@preconcurrency import WhisperKit
+@preconcurrency import FluidAudio
+
+actor RecognitionEngine {
+    private var whisper: WhisperKit?
+    private var parakeet: AsrManager?
+    private var active: SpeechModel?
+    private var occupied = false
+
+    func load(_ model: SpeechModel, directory: URL) async throws {
+        guard !occupied else { throw VoiceError("Распознавание ещё завершается.") }
+        occupied = true
+        defer { occupied = false }
+        try Task.checkCancellation()
+        if active == model { return }
+        await releaseModels()
+        switch model {
+        case .whisper:
+            let options = WhisperKitConfig(modelFolder: directory.path, tokenizerFolder: directory,
+                verbose: false, logLevel: .none, prewarm: true, load: true, download: false)
+            whisper = try await WhisperKit(options)
+        case .parakeet:
+            func compiled(_ name: String, cpu: Bool = false) throws -> MLModel {
+                let options = MLModelConfiguration()
+                options.computeUnits = cpu ? .cpuOnly : .cpuAndNeuralEngine
+                return try MLModel(contentsOf: directory.appendingPathComponent(name + ".mlmodelc"), configuration: options)
+            }
+            let words = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: directory.appendingPathComponent("parakeet_v3_vocab.json")))
+            var vocabulary: [Int: String] = [:]
+            for (key, word) in words { if let number = Int(key) { vocabulary[number] = word } }
+            guard vocabulary.count >= 8192 else { throw VoiceError("Неполный словарь модели.") }
+            let configuration = MLModelConfiguration()
+            configuration.computeUnits = .cpuAndNeuralEngine
+            let models = try AsrModels(encoder: compiled("Encoder_v2"), preprocessor: compiled("Preprocessor", cpu: true),
+                decoder: compiled("Decoder"), joint: compiled("JointDecisionv3"), configuration: configuration, vocabulary: vocabulary, version: .v3)
+            let manager = AsrManager()
+            try await manager.loadModels(models)
+            parakeet = manager
+        }
+        try Task.checkCancellation()
+        active = model
+    }
+
+    func recognize(_ file: URL, language: SpeechLanguage) async throws -> String {
+        guard !occupied, active != nil else { throw VoiceError("Модель ещё не готова.") }
+        occupied = true
+        defer { occupied = false }
+        try Task.checkCancellation()
+        let samples = try AudioConverter(sampleRate: 16_000).resampleAudioFile(file)
+        guard samples.count <= 16_000 * 600 else { throw VoiceError("Максимальная длина записи — 10 минут.") }
+        guard Self.containsSignal(samples) else { return "" }
+        let text: String
+        if let parakeet {
+            var decoder = try TdtDecoderState()
+            let hint: Language? = language == .russian ? .russian : language == .english ? .english : nil
+            text = try await parakeet.transcribe(samples, decoderState: &decoder, language: hint).text
+        } else if let whisper {
+            let options = DecodingOptions(language: language.code, detectLanguage: language == .automatic,
+                skipSpecialTokens: true, suppressBlank: true, concurrentWorkerCount: 1, chunkingStrategy: .vad)
+            text = try await whisper.transcribe(audioArray: samples, decodeOptions: options).map(\.text).joined(separator: " ")
+        } else { throw VoiceError("Модель не загружена.") }
+        try Task.checkCancellation()
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    nonisolated static func containsSignal(_ samples: [Float]) -> Bool {
+        guard samples.count >= 4_000 else { return false }
+        let energy = samples.reduce(0.0) { $0 + Double($1) * Double($1) } / Double(samples.count)
+        return energy.isFinite && energy > 0.00000001
+    }
+
+    func unload() async throws {
+        guard !occupied else { throw VoiceError("Дождитесь завершения распознавания.") }
+        await releaseModels()
+    }
+    private func releaseModels() async {
+        if let whisper { await whisper.unloadModels() }
+        if let parakeet { await parakeet.cleanup() }
+        whisper = nil; parakeet = nil; active = nil
+    }
+}
