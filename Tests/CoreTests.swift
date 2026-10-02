@@ -348,6 +348,10 @@ final class AudioTests: XCTestCase {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: root.path)
+        try RecordingFiles.prepareDirectory(root)
+        let permissions = try FileManager.default.attributesOfItem(atPath: root.path)[.posixPermissions] as? NSNumber
+        XCTAssertEqual(permissions?.intValue, 0o700)
         let old = root.appendingPathComponent(UUID().uuidString + ".caf")
         let recent = root.appendingPathComponent(UUID().uuidString + ".caf")
         let other = root.appendingPathComponent("user.caf")

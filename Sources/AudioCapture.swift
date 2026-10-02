@@ -72,6 +72,12 @@ private final class AudioFileSink: @unchecked Sendable {
 }
 
 enum RecordingFiles {
+    static func prepareDirectory(_ root: URL = AppStorage.audio) throws {
+        try StorageSafety.check(root, under: root)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        // createDirectory's attributes do not update a pre-existing directory.
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)
+    }
     static func purgeExpired(under root: URL = AppStorage.audio, now: Date = Date()) throws {
         try StorageSafety.check(root, under: root)
         guard FileManager.default.fileExists(atPath: root.path) else { return }
@@ -117,8 +123,7 @@ enum RecordingFiles {
         }
         let format = node.outputFormat(forBus: 0)
         guard format.channelCount > 0, format.sampleRate > 0 else { throw VoiceError("Микрофон не передаёт звук.") }
-        try StorageSafety.check(AppStorage.audio, under: AppStorage.audio)
-        try FileManager.default.createDirectory(at: AppStorage.audio, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try RecordingFiles.prepareDirectory()
         let file = AppStorage.audio.appendingPathComponent(UUID().uuidString).appendingPathExtension("caf")
         let sink: AudioFileSink
         do {
