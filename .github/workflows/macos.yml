@@ -45,6 +45,8 @@ jobs:
           path: build/generated.zip
           if-no-files-found: error
       - name: Build and unit tests without models
+        env:
+          DEMICHEV_UI_SNAPSHOTS: ${{ github.workspace }}/build/ui
         run: |
           set -o pipefail
           xcodebuild -project DemichevVoice.xcodeproj -scheme DemichevVoice \
@@ -68,3 +70,4 @@ jobs:
           path: |
             build/*.log
             build/Tests.xcresult
+            build/ui/*.png

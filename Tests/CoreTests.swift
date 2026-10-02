@@ -1,6 +1,7 @@
 import XCTest
 import AppKit
 import AVFoundation
+import SwiftUI
 @testable import DemichevVoice
 
 final class CatalogTests: XCTestCase {
@@ -109,6 +110,33 @@ final class TextTests: XCTestCase {
 }
 
 @MainActor final class ControllerTests: XCTestCase {
+    func testAllTabsRenderWithSyntheticDataWithoutPermissions() throws {
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        let controller = VoiceController(defaults: UserDefaults(suiteName: UUID().uuidString)!, clipboard: board,
+            microphoneAuthorized: { false }, availableDevices: { [] })
+        controller.preferences.replacements = [.init(original: "демичев", replacement: "Demichev")]
+        controller.publish("Синтетический текст для проверки интерфейса.")
+        for tab in ["dictation", "settings", "dictionary"] {
+            let host = NSHostingView(rootView: VoiceWindow(controller: controller, initialTab: tab))
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 850, height: 720), styleMask: [.titled], backing: .buffered, defer: false)
+            window.contentView = host
+            host.frame = NSRect(x: 0, y: 0, width: 850, height: 720)
+            host.layoutSubtreeIfNeeded()
+            let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            let data = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+            XCTAssertGreaterThan(data.count, 1_000)
+            if let directory = ProcessInfo.processInfo.environment["DEMICHEV_UI_SNAPSHOTS"] {
+                let root = URL(fileURLWithPath: directory, isDirectory: true)
+                try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+                try data.write(to: root.appendingPathComponent(tab + ".png"))
+            }
+            window.contentView = nil
+        }
+        XCTAssertFalse(controller.shortcutsActive)
+        XCTAssertFalse(controller.microphoneAllowed)
+    }
     private func waitForOperation(_ controller: VoiceController) async {
         for _ in 0..<100 where controller.busy && controller.phase != .recording { try? await Task.sleep(for: .milliseconds(10)) }
     }
