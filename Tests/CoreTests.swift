@@ -101,6 +101,11 @@ final class TextTests: XCTestCase {
         settings.model = .whisper; settings.inputUID = "synthetic-input"
         settings.replacements = [.init(original: "тест", replacement: "test")]
         settings.save(defaults)
+        // An existing installation may have enabled automatic paste. Ignore that
+        // legacy setting while preserving its model, input and dictionary.
+        var legacy = try! JSONSerialization.jsonObject(with: defaults.data(forKey: VoicePreferences.key)!) as! [String: Any]
+        legacy["pasteAutomatically"] = true
+        defaults.set(try! JSONSerialization.data(withJSONObject: legacy), forKey: VoicePreferences.key)
         let restored = VoicePreferences.read(defaults)
         XCTAssertEqual(restored.model, .whisper)
         XCTAssertEqual(restored.inputUID, "synthetic-input")

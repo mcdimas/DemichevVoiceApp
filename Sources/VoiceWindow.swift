@@ -138,15 +138,14 @@ struct VoiceWindow: View {
                         Text("Повторное нажатие").tag(RecordingMode.toggle)
                     }.pickerStyle(.segmented)
                     KeyboardShortcuts.Recorder("Сочетание клавиш", name: .recordVoice)
-                    Toggle("Вставлять в исходное поле", isOn: $controller.preferences.pasteAutomatically)
+                    Text("Результат копируется в буфер обмена. Вставьте его через Cmd+V.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }.padding(12).disabled(controller.busy)
             }
             HStack {
                 Label(controller.microphoneAllowed ? "Микрофон разрешён" : "Нужен микрофон", systemImage: "mic")
                 Button("Настроить") { controller.requestMicrophone() }
                 Spacer()
-                Label(controller.pasteAllowed ? "Вставка разрешена" : "Нужен Универсальный доступ", systemImage: "text.cursor")
-                Button("Настроить") { controller.requestPaste() }
             }.font(.caption)
         }
     }

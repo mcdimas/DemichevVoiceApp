@@ -1,7 +1,6 @@
 import AppKit
 import AVFoundation
 import Observation
-import ApplicationServices
 import KeyboardShortcuts
 
 extension KeyboardShortcuts.Name {
@@ -17,7 +16,6 @@ enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, r
     private let store: ModelStore
     private let recognizer = RecognitionEngine()
     private let capture = AudioCapture()
-    private let paste = PasteCoordinator()
     private var operation: Task<Void, Never>?
     private var meter: Task<Void, Never>?
     private var started = false
@@ -35,7 +33,6 @@ enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, r
     private(set) var level = 0.0
     private(set) var elapsed = 0
     private(set) var microphoneAllowed = false
-    private(set) var pasteAllowed = false
     var devices: [InputDevice] = []
     var canRecord: Bool { phase == .ready && microphoneAllowed }
     var busy: Bool { [.preparing, .removing, .recording, .recognizing, .cancelling].contains(phase) }
@@ -60,17 +57,12 @@ enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, r
 
     func refreshPermissions() {
         microphoneAllowed = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-        pasteAllowed = AXIsProcessTrusted()
         devices = InputDevices.available()
     }
     func requestMicrophone() {
         if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
             Task { _ = await AVCaptureDevice.requestAccess(for: .audio); refreshPermissions() }
         } else { openPrivacy("Privacy_Microphone") }
-    }
-    func requestPaste() {
-        _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
-        openPrivacy("Privacy_Accessibility")
     }
     private func openPrivacy(_ anchor: String) {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?" + anchor) { NSWorkspace.shared.open(url) }
@@ -127,9 +119,8 @@ enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, r
         refreshPermissions()
         guard canRecord, operation == nil else { return }
         error = ""; transcript = ""; elapsed = 0; level = 0
-        paste.capture()
         do { try capture.begin(inputUID: preferences.inputUID) }
-        catch { paste.reset(); self.error = error.localizedDescription; return }
+        catch { self.error = error.localizedDescription; return }
         phase = .recording; message = "Говорите. Отпустите клавиши для завершения."
         startedAt = Date(); cancelShortcut(enabled: true)
         meter = Task { [weak self] in
@@ -165,10 +156,9 @@ enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, r
                 try Task.checkCancellation()
                 publish(result)
                 if !transcript.isEmpty {
-                    let inserted = preferences.pasteAutomatically && paste.paste()
-                    message = inserted ? "Текст вставлен и скопирован." : "Текст скопирован. Используйте Cmd+V."
-                } else { message = "Речь не обнаружена."; paste.reset() }
-            } catch { paste.reset(); report(error) }
+                    message = "Текст скопирован. Используйте Cmd+V."
+                } else { message = "Речь не обнаружена." }
+            } catch { report(error) }
         }
     }
 
@@ -187,7 +177,7 @@ enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, r
     func cancel() {
         guard phase != .removing else { return }
         shortcutHeld = false; meter?.cancel(); meter = nil; level = 0
-        capture.discard(); paste.reset()
+        capture.discard()
         if let operation { phase = .cancelling; message = "Завершаем отмену…"; operation.cancel() }
         else { phase = ready ? .ready : .idle; message = "Запись отменена."; cancelShortcut(enabled: false) }
     }

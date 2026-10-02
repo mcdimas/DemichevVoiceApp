@@ -73,7 +73,6 @@ struct VoicePreferences: Codable {
     var language: SpeechLanguage = .russian
     var recordingMode: RecordingMode = .hold
     var inputUID = ""
-    var pasteAutomatically = true
     var replacements: [WordReplacement] = []
 
     static let key = "independent.preferences.v1"
