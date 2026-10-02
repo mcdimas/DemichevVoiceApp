@@ -30,7 +30,6 @@
 		F198AA5CA35A8ED875ECB1CF /* whisper.json in Resources */ = {isa = PBXBuildFile; fileRef = CDDBFD512D63189E2DFF24F7 /* whisper.json */; };
 		F54B620CC502048BBD168BF7 /* CoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F5B3EC2E474ADFFD195CE58 /* CoreTests.swift */; };
 		FC87D1DB669A54F0BA02F35C /* vbx.txt in Resources */ = {isa = PBXBuildFile; fileRef = AAA8DBE18EE5A65279783CD5 /* vbx.txt */; };
-		FCC11C9E0D2413D7F9D0B1B8 /* PasteCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8625D92F1621C3052A7B79C9 /* PasteCoordinator.swift */; };
 		FF23AF01298471065D328896 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8F1BC99EC2AC4835DD290380 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -54,7 +53,6 @@
 		3813C75FDED0B2F72D332C04 /* Whisper.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Whisper.txt; sourceTree = "<group>"; };
 		4F04B5E987033D4A3224AF47 /* AudioCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCapture.swift; sourceTree = "<group>"; };
 		5F5B3EC2E474ADFFD195CE58 /* CoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreTests.swift; sourceTree = "<group>"; };
-		8625D92F1621C3052A7B79C9 /* PasteCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteCoordinator.swift; sourceTree = "<group>"; };
 		8F1BC99EC2AC4835DD290380 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A106531AC44C5F509B78F8F1 /* Domain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Domain.swift; sourceTree = "<group>"; };
 		A5C20E8A021AA9D21919187A /* DemichevVoiceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DemichevVoiceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -123,7 +121,6 @@
 				EBEA5AEA9F8375630931D13A /* DemichevVoiceApp.swift */,
 				A106531AC44C5F509B78F8F1 /* Domain.swift */,
 				ECF00E3812CCB592457DA29E /* ModelStore.swift */,
-				8625D92F1621C3052A7B79C9 /* PasteCoordinator.swift */,
 				1493D631F2887579D5D1B736 /* RecognitionEngine.swift */,
 				C8A51B60C2E3E864B0D4D3F6 /* VoiceController.swift */,
 				E0CA0868510F2A3C6EC053B6 /* VoiceWindow.swift */,
@@ -282,7 +279,6 @@
 				8421BB1BAB8024495F07F6D9 /* DemichevVoiceApp.swift in Sources */,
 				B484FE30B9EA1903525792FD /* Domain.swift in Sources */,
 				52E2CBE163D11DDB5BFBE35B /* ModelStore.swift in Sources */,
-				FCC11C9E0D2413D7F9D0B1B8 /* PasteCoordinator.swift in Sources */,
 				5B15FF6E34AAE2CDBAA87995 /* RecognitionEngine.swift in Sources */,
 				80AAA2794AA6C272D82CDDD9 /* VoiceController.swift in Sources */,
 				E360DC1EA807E9FC3904C074 /* VoiceWindow.swift in Sources */,

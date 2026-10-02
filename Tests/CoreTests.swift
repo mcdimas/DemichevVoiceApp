@@ -106,16 +106,6 @@ final class TextTests: XCTestCase {
         let rules = [WordReplacement(original: "плюс", replacement: "C++ $1"), WordReplacement(original: "кот", replacement: "dog", enabled: false)]
         XCTAssertEqual(ReplacementPipeline.apply("😀 плюс, кот", rules: rules), "😀 C++ $1, кот")
     }
-    func testPasteRejectsChangedTextSelectionProcessOrSecureField() {
-        let initial = FieldState(process: 42, value: "abc", selectionStart: 1, selectionLength: 0, secure: false)
-        XCTAssertTrue(initial.allowsPaste(from: initial))
-        for current in [FieldState(process: 43, value: "abc", selectionStart: 1, selectionLength: 0, secure: false),
-            FieldState(process: 42, value: "abd", selectionStart: 1, selectionLength: 0, secure: false),
-            FieldState(process: 42, value: "abc", selectionStart: 2, selectionLength: 0, secure: false),
-            FieldState(process: 42, value: "abc", selectionStart: 1, selectionLength: 0, secure: true)] {
-            XCTAssertFalse(current.allowsPaste(from: initial))
-        }
-    }
 }
 
 @MainActor final class ControllerTests: XCTestCase {

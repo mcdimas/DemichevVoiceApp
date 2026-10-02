@@ -10,6 +10,11 @@ struct VoiceWindow: View {
     @State private var replacement = ""
     private let navy = Color(red: 0.06, green: 0.17, blue: 0.28)
 
+    init(controller: VoiceController, initialTab: String = "dictation") {
+        self.controller = controller
+        _tab = State(initialValue: initialTab)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 14) {
@@ -57,7 +62,7 @@ struct VoiceWindow: View {
     private var dictation: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("Диктовка").font(.title2.bold())
-            Text("Удерживайте \(KeyboardShortcuts.getShortcut(for: .recordVoice)?.description ?? "сочетание клавиш") в текстовом поле. В режиме переключения нажмите ещё раз для завершения.")
+            Text("Удерживайте \(controller.shortcutDescription) для записи. В режиме переключения нажмите ещё раз для завершения. Результат вставляется через Cmd+V.")
                 .foregroundStyle(.secondary).font(.callout)
             GroupBox {
                 VStack(spacing: 18) {
@@ -83,7 +88,7 @@ struct VoiceWindow: View {
                         Button("Подготовить модель") { tab = "settings" }.buttonStyle(.link)
                     }
                     if !controller.microphoneAllowed {
-                        Button("Разрешить микрофон") { controller.requestMicrophone() }.buttonStyle(.link)
+                        Button("Разрешить микрофон") { controller.requestMicrophone() }.buttonStyle(.link).disabled(controller.microphoneRequesting)
                     }
                 }.frame(maxWidth: .infinity).padding(18)
             }
@@ -137,14 +142,15 @@ struct VoiceWindow: View {
                         Text("Удержание").tag(RecordingMode.hold)
                         Text("Повторное нажатие").tag(RecordingMode.toggle)
                     }.pickerStyle(.segmented)
-                    KeyboardShortcuts.Recorder("Сочетание клавиш", name: .recordVoice)
+                    if controller.shortcutsActive { KeyboardShortcuts.Recorder("Сочетание клавиш", name: .recordVoice) }
+                    else { Text(controller.shortcutDescription).font(.caption) }
                     Text("Результат копируется в буфер обмена. Вставьте его через Cmd+V.")
                         .font(.caption).foregroundStyle(.secondary)
                 }.padding(12).disabled(controller.busy)
             }
             HStack {
                 Label(controller.microphoneAllowed ? "Микрофон разрешён" : "Нужен микрофон", systemImage: "mic")
-                Button("Настроить") { controller.requestMicrophone() }
+                Button("Настроить") { controller.requestMicrophone() }.disabled(controller.microphoneRequesting)
                 Spacer()
             }.font(.caption)
         }

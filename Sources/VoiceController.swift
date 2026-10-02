@@ -38,11 +38,14 @@ enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, r
     private(set) var level = 0.0
     private(set) var elapsed = 0
     private(set) var microphoneAllowed = false
+    private(set) var microphoneRequesting = false
     private(set) var installedModels: Set<SpeechModel> = []
     var devices: [InputDevice] = []
     var canRecord: Bool { phase == .ready && microphoneAllowed }
     var busy: Bool { [.preparing, .removing, .recording, .recognizing, .cancelling].contains(phase) }
     var canCancel: Bool { [.preparing, .recording, .recognizing].contains(phase) }
+    var shortcutsActive: Bool { started }
+    var shortcutDescription: String { started ? KeyboardShortcuts.getShortcut(for: .recordVoice)?.description ?? "заданное сочетание клавиш" : "Control + Option + Пробел" }
 
     init(defaults: UserDefaults = .standard, clipboard: NSPasteboard = .general, modelRoot: URL = AppStorage.models,
          store: (any ModelPreparing)? = nil, recognizer: any SpeechRecognizing = RecognitionEngine(),
@@ -75,9 +78,21 @@ enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, r
     }
     private func refreshModels() { installedModels = Set(SpeechModel.allCases.filter { ModelStore.isPresent($0, root: modelRoot) }) }
     func requestMicrophone() {
-        if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
-            Task { _ = await AVCaptureDevice.requestAccess(for: .audio); refreshPermissions() }
-        } else { openPrivacy("Privacy_Microphone") }
+        guard !microphoneRequesting else { return }
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized: refreshPermissions()
+        case .notDetermined:
+            microphoneRequesting = true
+            Task {
+                defer { microphoneRequesting = false }
+                _ = await AVCaptureDevice.requestAccess(for: .audio)
+                refreshPermissions()
+                if !microphoneAllowed { error = "Доступ к микрофону не разрешён. Измените разрешение в настройках macOS." }
+            }
+        case .denied: openPrivacy("Privacy_Microphone")
+        case .restricted: error = "Доступ к микрофону ограничен настройками системы или администратора."
+        @unknown default: error = "Не удалось определить разрешение микрофона."
+        }
     }
     private func openPrivacy(_ anchor: String) {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?" + anchor) { NSWorkspace.shared.open(url) }
