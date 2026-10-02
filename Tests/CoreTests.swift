@@ -5,6 +5,40 @@ import SwiftUI
 @testable import DemichevVoice
 
 final class CatalogTests: XCTestCase {
+    private func smallCatalog() -> ModelCatalog {
+        ModelCatalog(name: "parakeet", files: [.init(relativePath: "weights.bin",
+            sourceURL: URL(string: "https://huggingface.co/test/model/resolve/0000000000000000000000000000000000000000/weights.bin")!, byteCount: 6,
+            digest: "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03", algorithm: .sha256)])
+    }
+    func testVerifiedTransferRepairsCorruptionAndResumesWithoutNetwork() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = ModelStore.folder(.parakeet, root: root)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("wrong\n".utf8).write(to: folder.appendingPathComponent("weights.bin"))
+        let transfer = FakeTransfer(text: "hello\n")
+        let catalog = smallCatalog()
+        let store = ModelStore(root: root, catalog: catalog, transfer: { request, progress in try await transfer.fetch(request, progress: progress) })
+        _ = try await store.prepare(.parakeet, allowNetwork: true) { _ in }
+        XCTAssertEqual(try String(contentsOf: folder.appendingPathComponent("weights.bin"), encoding: .utf8), "hello\n")
+        XCTAssertEqual(try String(contentsOf: folder.appendingPathComponent(".installed"), encoding: .utf8), catalog.fingerprint)
+        _ = try await store.prepare(.parakeet, allowNetwork: false) { _ in }
+        let requests = await transfer.requests
+        XCTAssertEqual(requests, 1)
+    }
+    func testCorruptTransferCannotOverwriteExistingFileOrInstallMarker() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = ModelStore.folder(.parakeet, root: root)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("keep!\n".utf8).write(to: folder.appendingPathComponent("weights.bin"))
+        let transfer = FakeTransfer(text: "wrong\n")
+        let store = ModelStore(root: root, catalog: smallCatalog(), transfer: { request, progress in try await transfer.fetch(request, progress: progress) })
+        do { _ = try await store.prepare(.parakeet, allowNetwork: true) { _ in }; XCTFail("Corrupt transfer") } catch {}
+        XCTAssertEqual(try String(contentsOf: folder.appendingPathComponent("weights.bin"), encoding: .utf8), "keep!\n")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent(".installed").path))
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: folder.path).allSatisfy { !$0.hasPrefix(".download-") })
+    }
     private func fixture(_ text: String) throws -> URL {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try Data(text.utf8).write(to: file)
@@ -351,6 +385,19 @@ private actor FakeStore: ModelPreparing {
         URL(fileURLWithPath: "/tmp/synthetic-model")
     }
     func remove(_ model: SpeechModel) async throws {}
+}
+
+private actor FakeTransfer {
+    let text: String
+    private(set) var requests = 0
+    init(text: String) { self.text = text }
+    func fetch(_ request: URLRequest, progress: @Sendable (Int64) -> Void) throws -> (URL, URLResponse) {
+        requests += 1
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data(text.utf8).write(to: file)
+        progress(Int64(text.utf8.count))
+        return (file, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+    }
 }
 
 private actor FakeRecognizer: SpeechRecognizing {

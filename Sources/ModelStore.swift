@@ -71,15 +71,18 @@ struct ModelCatalog: Codable, Sendable {
     static func bundled(_ model: SpeechModel) throws -> Self {
         guard let url = Bundle.main.url(forResource: model.rawValue, withExtension: "json") else { throw VoiceError("Список файлов модели отсутствует.") }
         let catalog = try JSONDecoder().decode(Self.self, from: Data(contentsOf: url))
-        guard catalog.name == model.rawValue, !catalog.files.isEmpty else { throw VoiceError("Неверный список файлов модели.") }
-        guard Set(catalog.files.map(\.relativePath)).count == catalog.files.count,
-              catalog.files.allSatisfy({ file in
+        try catalog.validate(for: model)
+        return catalog
+    }
+    func validate(for model: SpeechModel) throws {
+        guard name == model.rawValue, !files.isEmpty else { throw VoiceError("Неверный список файлов модели.") }
+        guard Set(files.map(\.relativePath)).count == files.count,
+              files.allSatisfy({ file in
                   file.byteCount > 0 && file.byteCount < 2_000_000_000 &&
                   file.digest.range(of: file.algorithm == .sha256 ? "^[a-f0-9]{64}$" : "^[a-f0-9]{40}$", options: .regularExpression) != nil &&
                   file.sourceURL.scheme == "https" && file.sourceURL.host == "huggingface.co" &&
                   file.sourceURL.path.range(of: "/resolve/[a-f0-9]{40}/", options: .regularExpression) != nil
-              }), catalog.files.count < 1_000 else { throw VoiceError("Повреждён список файлов модели.") }
-        return catalog
+              }), files.count < 1_000 else { throw VoiceError("Повреждён список файлов модели.") }
     }
 }
 
@@ -103,9 +106,14 @@ protocol ModelPreparing: Sendable {
 }
 
 actor ModelStore: ModelPreparing {
+    typealias Transfer = @Sendable (URLRequest, @escaping @Sendable (Int64) -> Void) async throws -> (URL, URLResponse)
     let root: URL
     private var working = false
-    init(root: URL = AppStorage.models) { self.root = root }
+    private let catalogOverride: ModelCatalog?
+    private let transfer: Transfer?
+    init(root: URL = AppStorage.models, catalog: ModelCatalog? = nil, transfer: Transfer? = nil) {
+        self.root = root; catalogOverride = catalog; self.transfer = transfer
+    }
     nonisolated static func folder(_ model: SpeechModel, root: URL = AppStorage.models) -> URL { root.appendingPathComponent(model.rawValue, isDirectory: true) }
     nonisolated static func isPresent(_ model: SpeechModel, root: URL = AppStorage.models) -> Bool {
         let marker = folder(model, root: root).appendingPathComponent(".installed")
@@ -126,7 +134,8 @@ actor ModelStore: ModelPreparing {
         let directory = Self.folder(model, root: root)
         try StorageSafety.check(directory, under: root)
         try fm.createDirectory(at: directory, withIntermediateDirectories: true)
-        let catalog = try ModelCatalog.bundled(model)
+        let catalog = try catalogOverride ?? ModelCatalog.bundled(model)
+        try catalog.validate(for: model)
         let marker = directory.appendingPathComponent(".installed")
         try StorageSafety.check(marker, under: root)
         if fm.fileExists(atPath: marker.path) { try fm.removeItem(at: marker) }
@@ -145,10 +154,13 @@ actor ModelStore: ModelPreparing {
             let free = try directory.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage ?? 0
             guard free > file.byteCount * 2 + 100_000_000 else { throw VoiceError("Недостаточно места для загрузки и проверки модели.") }
             let offset = completed
-            let observer = TransferObserver { bytes in publish(.init(completed: offset + min(bytes, file.byteCount), total: catalog.size, description: "Загрузка модели…")) }
+            let progress: @Sendable (Int64) -> Void = { bytes in publish(.init(completed: offset + max(0, min(bytes, file.byteCount)), total: catalog.size, description: "Загрузка модели…")) }
             var request = URLRequest(url: file.sourceURL)
             request.timeoutInterval = 300
-            let (temporary, response) = try await session.download(for: request, delegate: observer)
+            let temporary: URL
+            let response: URLResponse
+            if let transfer { (temporary, response) = try await transfer(request, progress) }
+            else { (temporary, response) = try await session.download(for: request, delegate: TransferObserver(publish: progress)) }
             defer { try? fm.removeItem(at: temporary) }
             try Task.checkCancellation()
             guard (response as? HTTPURLResponse)?.statusCode == 200, try file.verify(temporary) else { throw VoiceError("Файл модели не прошёл проверку хеша. Повторите загрузку.") }
