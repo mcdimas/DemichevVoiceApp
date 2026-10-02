@@ -88,9 +88,27 @@ final class VoiceAppDelegate: NSObject, NSApplicationDelegate {
         do {
             try RecognitionEngine.validateAudio(audio)
             let store = ModelStore(); let engine = RecognitionEngine()
+            let suite = "ru.demichev.voice.check." + UUID().uuidString
+            let defaults = UserDefaults(suiteName: suite)!
+            let board = NSPasteboard.withUniqueName()
+            defer { defaults.removePersistentDomain(forName: suite); board.releaseGlobally() }
+            let controller = VoiceController(defaults: defaults, clipboard: board, store: store, recognizer: engine,
+                microphoneAuthorized: { false }, availableDevices: { [] })
             for model in SpeechModel.allCases {
-                let path = try await store.prepare(model, allowNetwork: false) { _ in }
-                try await engine.load(model, directory: path)
+                // Exercise the same verification -> memory loading -> ready
+                // path as the window, without permissions or real preferences.
+                controller.preferences.model = model
+                let started = Date()
+                controller.prepare(download: false)
+                while controller.busy {
+                    guard Date().timeIntervalSince(started) < 600 else {
+                        throw VoiceError("Подготовка \(model.title) не завершилась за 10 минут: \(controller.message)")
+                    }
+                    try await Task.sleep(for: .milliseconds(100))
+                }
+                guard controller.phase == .ready else { throw VoiceError("\(model.title): \(controller.error)") }
+                print("MODEL_READY \(model.rawValue) elapsed_seconds=\(Int(Date().timeIntervalSince(started)))")
+                let path = ModelStore.folder(model)
                 let result = try await engine.recognize(audio, language: .automatic)
                 guard !result.isEmpty else { throw VoiceError("Нет результата для \(model.title).") }
                 if let expected = ProcessInfo.processInfo.environment["DEMICHEV_EXPECT_WORDS"] {

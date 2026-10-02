@@ -32,14 +32,16 @@ struct VoiceWindow: View {
                 Text("Настройки").tag("settings")
                 Text("Словарь").tag("dictionary")
             }.pickerStyle(.segmented).padding(.horizontal, 26).padding(.vertical, 18)
+            if !controller.error.isEmpty {
+                Label(controller.error, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.red).font(.callout).textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 28).padding(.bottom, 16)
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     if tab == "dictation" { dictation }
                     else if tab == "settings" { settings }
                     else { dictionary }
-                    if !controller.error.isEmpty {
-                        Label(controller.error, systemImage: "exclamationmark.triangle").foregroundStyle(.red).font(.callout).textSelection(.enabled)
-                    }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 28).padding(.bottom, 24)
             }
             Divider()
@@ -74,8 +76,9 @@ struct VoiceWindow: View {
                             .accessibilityLabel("Уровень микрофона")
                         Text(String(format: "%d:%02d", controller.elapsed / 60, controller.elapsed % 60)).monospacedDigit()
                     }
-                    if [.preparing, .removing, .recognizing, .cancelling].contains(controller.phase) {
-                        if controller.phase == .preparing { ProgressView(value: controller.progress).frame(maxWidth: 300) }
+                    if [.preparing, .loading, .removing, .recognizing, .cancelling].contains(controller.phase) {
+                        if controller.phase == .preparing { fileProgress.frame(maxWidth: 300) }
+                        else if controller.phase == .loading { loadingProgress }
                         else { ProgressView().controlSize(.small) }
                     }
                     HStack {
@@ -123,7 +126,13 @@ struct VoiceWindow: View {
                         Spacer()
                         Button("Удалить…", role: .destructive) { confirmRemoval = true }.disabled(controller.busy)
                     }
-                    if controller.phase == .preparing { ProgressView(value: controller.progress); Text(controller.message).font(.caption) }
+                    if controller.phase == .preparing { fileProgress }
+                    if controller.phase == .loading { loadingProgress }
+                    Text(controller.message).font(.caption)
+                    if [.preparing, .loading, .cancelling].contains(controller.phase) {
+                        Button(controller.phase == .cancelling ? "Завершаем отмену…" : "Отменить") { controller.cancel() }
+                            .disabled(!controller.canCancel)
+                    }
                 }.padding(12)
             }
             GroupBox("Запись") {
@@ -153,6 +162,32 @@ struct VoiceWindow: View {
                 Button("Настроить") { controller.requestMicrophone() }.disabled(controller.microphoneRequesting)
                 Spacer()
             }.font(.caption)
+        }
+    }
+
+    private var fileProgress: some View {
+        VStack(spacing: 6) {
+            ProgressView(value: controller.progress)
+            if controller.modelBytesTotal > 0 {
+                Text("\(Int(controller.progress * 100))% · \(ByteCountFormatter.string(fromByteCount: controller.modelBytesCompleted, countStyle: .file)) / \(ByteCountFormatter.string(fromByteCount: controller.modelBytesTotal, countStyle: .file))")
+                    .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var loadingProgress: some View {
+        VStack(spacing: 8) {
+            HStack {
+                ProgressView().controlSize(.small)
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    let seconds = max(0, Int(context.date.timeIntervalSince(controller.loadingStartedAt ?? context.date)))
+                    Text(String(format: "Подготовка на Mac · %d:%02d", seconds / 60, seconds % 60)).monospacedDigit()
+                }
+            }
+            Text("Файлы уже на Mac. При первом запуске Core ML готовит модель для этого компьютера; это может занять несколько минут.")
+                .font(.caption).foregroundStyle(.secondary)
+            Text("Отмена завершится после текущего этапа подготовки. Скачанные файлы сохранятся.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 

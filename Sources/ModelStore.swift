@@ -90,7 +90,13 @@ struct ModelProgress: Sendable {
     let completed: Int64
     let total: Int64
     let description: String
-    var fraction: Double { Double(completed) / Double(max(total, 1)) }
+    var fraction: Double { max(0, min(1, Double(completed) / Double(max(total, 1)))) }
+}
+
+private struct ModelHTTPError: LocalizedError {
+    let status: Int
+    var retryable: Bool { status == 408 || status == 429 || (500...599).contains(status) }
+    var errorDescription: String? { "Сервер файлов модели вернул HTTP \(status). Повторите загрузку позже. Уже проверенные файлы сохранены." }
 }
 
 private final class TransferObserver: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
@@ -107,12 +113,16 @@ protocol ModelPreparing: Sendable {
 
 actor ModelStore: ModelPreparing {
     typealias Transfer = @Sendable (URLRequest, @escaping @Sendable (Int64) -> Void) async throws -> (URL, URLResponse)
+    typealias RetryDelay = @Sendable (Int) async throws -> Void
     let root: URL
     private var working = false
     private let catalogOverride: ModelCatalog?
     private let transfer: Transfer?
-    init(root: URL = AppStorage.models, catalog: ModelCatalog? = nil, transfer: Transfer? = nil) {
+    private let retryDelay: RetryDelay
+    init(root: URL = AppStorage.models, catalog: ModelCatalog? = nil, transfer: Transfer? = nil,
+         retryDelay: @escaping RetryDelay = { attempt in try await Task.sleep(for: .seconds(attempt * 2)) }) {
         self.root = root; catalogOverride = catalog; self.transfer = transfer
+        self.retryDelay = retryDelay
     }
     nonisolated static func folder(_ model: SpeechModel, root: URL = AppStorage.models) -> URL { root.appendingPathComponent(model.rawValue, isDirectory: true) }
     nonisolated static func isPresent(_ model: SpeechModel, root: URL = AppStorage.models) -> Bool {
@@ -139,7 +149,10 @@ actor ModelStore: ModelPreparing {
         let marker = directory.appendingPathComponent(".installed")
         try StorageSafety.check(marker, under: root)
         if fm.fileExists(atPath: marker.path) { try fm.removeItem(at: marker) }
-        let session = URLSession(configuration: .ephemeral)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 60
+        configuration.timeoutIntervalForResource = 3_600
+        let session = URLSession(configuration: configuration)
         defer { session.invalidateAndCancel() }
         var completed: Int64 = 0
         for file in catalog.files {
@@ -156,14 +169,14 @@ actor ModelStore: ModelPreparing {
             let offset = completed
             let progress: @Sendable (Int64) -> Void = { bytes in publish(.init(completed: offset + max(0, min(bytes, file.byteCount)), total: catalog.size, description: "Загрузка модели…")) }
             var request = URLRequest(url: file.sourceURL)
-            request.timeoutInterval = 300
-            let temporary: URL
-            let response: URLResponse
-            if let transfer { (temporary, response) = try await transfer(request, progress) }
-            else { (temporary, response) = try await session.download(for: request, delegate: TransferObserver(publish: progress)) }
+            request.timeoutInterval = 60
+            let temporary = try await download(request, session: session, progress: progress) { attempt in
+                publish(.init(completed: offset, total: catalog.size, description: "Загрузка прервалась. Повтор \(attempt) из 3…"))
+            }
             defer { try? fm.removeItem(at: temporary) }
             try Task.checkCancellation()
-            guard (response as? HTTPURLResponse)?.statusCode == 200, try file.verify(temporary) else { throw VoiceError("Файл модели не прошёл проверку хеша. Повторите загрузку.") }
+            publish(.init(completed: offset + file.byteCount, total: catalog.size, description: "Проверка хеша скачанного файла…"))
+            guard try file.verify(temporary) else { throw VoiceError("Файл модели не прошёл проверку хеша. Повторите загрузку.") }
             try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
             // Move only validated files into this app's model directory.
             // Stage on the destination volume before atomic replacement.
@@ -181,6 +194,32 @@ actor ModelStore: ModelPreparing {
         try Data(catalog.fingerprint.utf8).write(to: marker, options: .atomic)
         publish(.init(completed: catalog.size, total: catalog.size, description: "Файлы проверены"))
         return directory
+    }
+
+    private func download(_ request: URLRequest, session: URLSession, progress: @escaping @Sendable (Int64) -> Void,
+                          retrying: @Sendable (Int) -> Void) async throws -> URL {
+        for attempt in 1...3 {
+            try Task.checkCancellation()
+            do {
+                let result: (URL, URLResponse)
+                if let transfer { result = try await transfer(request, progress) }
+                else { result = try await session.download(for: request, delegate: TransferObserver(publish: progress)) }
+                guard let response = result.1 as? HTTPURLResponse, response.statusCode == 200 else {
+                    try? FileManager.default.removeItem(at: result.0)
+                    throw ModelHTTPError(status: (result.1 as? HTTPURLResponse)?.statusCode ?? 0)
+                }
+                return result.0
+            } catch {
+                try Task.checkCancellation()
+                let transientCodes: [URLError.Code] = [.timedOut, .networkConnectionLost, .cannotConnectToHost,
+                    .cannotFindHost, .dnsLookupFailed, .notConnectedToInternet]
+                let retryable = (error as? ModelHTTPError)?.retryable ?? (error as? URLError).map { transientCodes.contains($0.code) } ?? false
+                guard attempt < 3, retryable else { throw error }
+                retrying(attempt + 1)
+                try await retryDelay(attempt)
+            }
+        }
+        throw VoiceError("Не удалось скачать файл модели.")
     }
 
     func remove(_ model: SpeechModel) throws {

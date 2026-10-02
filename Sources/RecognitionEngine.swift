@@ -5,9 +5,15 @@ import AVFoundation
 @preconcurrency import FluidAudio
 
 protocol SpeechRecognizing: Sendable {
-    func load(_ model: SpeechModel, directory: URL) async throws
+    func load(_ model: SpeechModel, directory: URL, publish: @escaping @Sendable (String) -> Void) async throws
     func recognize(_ file: URL, language: SpeechLanguage) async throws -> String
     func unload() async throws
+}
+
+extension SpeechRecognizing {
+    func load(_ model: SpeechModel, directory: URL) async throws {
+        try await load(model, directory: directory, publish: { _ in })
+    }
 }
 
 actor RecognitionEngine: SpeechRecognizing {
@@ -16,7 +22,7 @@ actor RecognitionEngine: SpeechRecognizing {
     private var active: SpeechModel?
     private var occupied = false
 
-    func load(_ model: SpeechModel, directory: URL) async throws {
+    func load(_ model: SpeechModel, directory: URL, publish: @escaping @Sendable (String) -> Void) async throws {
         guard !occupied else { throw VoiceError("Распознавание ещё завершается.") }
         occupied = true
         defer { occupied = false }
@@ -26,15 +32,19 @@ actor RecognitionEngine: SpeechRecognizing {
         do {
         switch model {
         case .whisper:
+            publish("Whisper: подготовка Core ML и загрузка в память…")
             let options = WhisperKitConfig(modelFolder: directory.path, tokenizerFolder: directory,
-                verbose: false, logLevel: .none, prewarm: true, load: true, download: false)
+                verbose: false, logLevel: .none, prewarm: false, load: true, download: false)
             whisper = try await WhisperKit(options)
         case .parakeet:
-            func compiled(_ name: String, cpu: Bool = false) throws -> MLModel {
+            func compiled(_ name: String, cpu: Bool = false) async throws -> MLModel {
                 try Task.checkCancellation()
+                publish("Parakeet: подготовка \(name)…")
                 let options = MLModelConfiguration()
                 options.computeUnits = cpu ? .cpuOnly : .cpuAndNeuralEngine
-                return try MLModel(contentsOf: directory.appendingPathComponent(name + ".mlmodelc"), configuration: options)
+                let model = try await MLModel.load(contentsOf: directory.appendingPathComponent(name + ".mlmodelc"), configuration: options)
+                try Task.checkCancellation()
+                return model
             }
             let words = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: directory.appendingPathComponent("parakeet_v3_vocab.json")))
             var vocabulary: [Int: String] = [:]
@@ -42,9 +52,14 @@ actor RecognitionEngine: SpeechRecognizing {
             guard vocabulary.count >= 8192 else { throw VoiceError("Неполный словарь модели.") }
             let configuration = MLModelConfiguration()
             configuration.computeUnits = .cpuAndNeuralEngine
-            let models = try AsrModels(encoder: compiled("Encoder_v2"), preprocessor: compiled("Preprocessor", cpu: true),
-                decoder: compiled("Decoder"), joint: compiled("JointDecisionv3"), configuration: configuration, vocabulary: vocabulary, version: .v3)
+            let encoder = try await compiled("Encoder_v2")
+            let preprocessor = try await compiled("Preprocessor", cpu: true)
+            let decoder = try await compiled("Decoder")
+            let joint = try await compiled("JointDecisionv3")
+            let models = AsrModels(encoder: encoder, preprocessor: preprocessor, decoder: decoder, joint: joint,
+                configuration: configuration, vocabulary: vocabulary, version: .v3)
             let manager = AsrManager()
+            publish("Parakeet: подключение компонентов…")
             try await manager.loadModels(models)
             parakeet = manager
         }

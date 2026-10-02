@@ -39,6 +39,57 @@ final class CatalogTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent(".installed").path))
         XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: folder.path).allSatisfy { !$0.hasPrefix(".download-") })
     }
+    func testInterruptedDownloadRetriesAndStillVerifiesHash() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transfer = FakeTransfer(text: "hello\n", failures: 1)
+        let store = ModelStore(root: root, catalog: smallCatalog(), transfer: { request, progress in
+            try await transfer.fetch(request, progress: progress)
+        }, retryDelay: { _ in })
+        let folder = try await store.prepare(.parakeet, allowNetwork: true) { _ in }
+        XCTAssertTrue(try smallCatalog().files[0].verify(folder.appendingPathComponent("weights.bin")))
+        let requests = await transfer.requests
+        XCTAssertEqual(requests, 2)
+    }
+    func testRepeatedTimeoutStopsAfterThreeAttempts() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transfer = FakeTransfer(text: "hello\n", failures: 10)
+        let store = ModelStore(root: root, catalog: smallCatalog(), transfer: { request, progress in
+            try await transfer.fetch(request, progress: progress)
+        }, retryDelay: { _ in })
+        do { _ = try await store.prepare(.parakeet, allowNetwork: true) { _ in }; XCTFail("Expected timeout") }
+        catch { XCTAssertEqual((error as? URLError)?.code, .timedOut) }
+        let requests = await transfer.requests
+        XCTAssertEqual(requests, 3)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: ModelStore.folder(.parakeet, root: root).appendingPathComponent(".installed").path))
+    }
+    func testHTTPFailureIsNotReportedAsHashCorruption() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transfer = FakeTransfer(text: "hello\n", status: 403)
+        let store = ModelStore(root: root, catalog: smallCatalog(), transfer: { request, progress in
+            try await transfer.fetch(request, progress: progress)
+        }, retryDelay: { _ in })
+        do { _ = try await store.prepare(.parakeet, allowNetwork: true) { _ in }; XCTFail("Expected HTTP failure") }
+        catch { XCTAssertTrue(error.localizedDescription.contains("HTTP 403")); XCTAssertFalse(error.localizedDescription.contains("хеша")) }
+        let requests = await transfer.requests
+        XCTAssertEqual(requests, 1)
+        let temporary = await transfer.lastTemporary
+        if let temporary { XCTAssertFalse(FileManager.default.fileExists(atPath: temporary.path)) }
+    }
+    func testCancelledTransferIsNeverRetried() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transfer = FakeTransfer(text: "hello\n", failures: 1, failureCode: .cancelled)
+        let store = ModelStore(root: root, catalog: smallCatalog(), transfer: { request, progress in
+            try await transfer.fetch(request, progress: progress)
+        }, retryDelay: { _ in })
+        do { _ = try await store.prepare(.parakeet, allowNetwork: true) { _ in }; XCTFail("Expected cancellation") }
+        catch { XCTAssertEqual((error as? URLError)?.code, .cancelled) }
+        let requests = await transfer.requests
+        XCTAssertEqual(requests, 1)
+    }
     private func fixture(_ text: String) throws -> URL {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try Data(text.utf8).write(to: file)
@@ -152,6 +203,36 @@ final class TextTests: XCTestCase {
         controller.preferences.replacements = [.init(original: "демичев", replacement: "Demichev")]
         controller.publish("Синтетический текст для проверки интерфейса.")
         for tab in ["dictation", "settings", "dictionary"] {
+            try snapshot(controller, tab: tab, name: tab)
+        }
+        XCTAssertFalse(controller.shortcutsActive)
+        XCTAssertFalse(controller.microphoneAllowed)
+    }
+    func testLoadingAndFailedPreparationRenderWithoutPermissions() async throws {
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        let recognizer = FakeRecognizer(holdLoad: true)
+        let controller = VoiceController(defaults: UserDefaults(suiteName: UUID().uuidString)!, clipboard: board,
+            store: FakeStore(), recognizer: recognizer, microphoneAuthorized: { false }, availableDevices: { [] })
+        controller.prepare(download: false)
+        for _ in 0..<100 where controller.phase != .loading { try? await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(controller.phase, .loading)
+        // Allow the asynchronously published component status to arrive.
+        try? await Task.sleep(for: .milliseconds(20))
+        try snapshot(controller, tab: "dictation", name: "dictation-loading")
+        try snapshot(controller, tab: "settings", name: "settings-loading")
+        controller.cancel()
+        await recognizer.finishLoad()
+        await waitForOperation(controller)
+        let failure = VoiceController(defaults: UserDefaults(suiteName: UUID().uuidString)!, clipboard: board,
+            store: FakeStore(), recognizer: FakeRecognizer(failLoad: true), microphoneAuthorized: { false }, availableDevices: { [] })
+        failure.prepare(download: false)
+        await waitForOperation(failure)
+        XCTAssertEqual(failure.phase, .idle)
+        XCTAssertFalse(failure.error.isEmpty)
+        try snapshot(failure, tab: "settings", name: "settings-error")
+    }
+    private func snapshot(_ controller: VoiceController, tab: String, name: String) throws {
             let host = NSHostingView(rootView: VoiceWindow(controller: controller, initialTab: tab))
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 850, height: 720), styleMask: [.titled], backing: .buffered, defer: false)
             window.contentView = host
@@ -162,17 +243,14 @@ final class TextTests: XCTestCase {
             let data = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
             XCTAssertGreaterThan(data.count, 1_000)
             let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")
-            attachment.name = tab; attachment.lifetime = .keepAlways
+            attachment.name = name; attachment.lifetime = .keepAlways
             add(attachment)
             if let directory = ProcessInfo.processInfo.environment["DEMICHEV_UI_SNAPSHOTS"] {
                 let root = URL(fileURLWithPath: directory, isDirectory: true)
                 try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-                try data.write(to: root.appendingPathComponent(tab + ".png"))
+                try data.write(to: root.appendingPathComponent(name + ".png"))
             }
             window.contentView = nil
-        }
-        XCTAssertFalse(controller.shortcutsActive)
-        XCTAssertFalse(controller.microphoneAllowed)
     }
     private func waitForOperation(_ controller: VoiceController) async {
         for _ in 0..<100 where controller.busy && controller.phase != .recording { try? await Task.sleep(for: .milliseconds(10)) }
@@ -245,8 +323,49 @@ final class TextTests: XCTestCase {
         XCTAssertEqual(controller.phase, .idle)
         XCTAssertFalse(controller.canRecord)
         XCTAssertFalse(controller.error.isEmpty)
+        XCTAssertFalse(controller.message.contains("Загрузка"))
         let unloads = await recognizer.unloads
         XCTAssertEqual(unloads, 2)
+    }
+    func testFullDownloadBarCannotOverwriteModelLoadingOrReadyStatus() async {
+        let store = FakeStore()
+        let recognizer = FakeRecognizer(holdLoad: true)
+        let controller = VoiceController(defaults: UserDefaults(suiteName: UUID().uuidString)!, store: store, recognizer: recognizer,
+            microphoneAuthorized: { true }, availableDevices: { [] })
+        controller.prepare(download: true)
+        for _ in 0..<100 where controller.phase != .loading { try? await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(controller.phase, .loading)
+        XCTAssertNotNil(controller.loadingStartedAt)
+        XCTAssertTrue(controller.busy)
+        XCTAssertTrue(controller.canCancel)
+        XCTAssertFalse(controller.canRecord)
+        await store.publishLateProgress()
+        try? await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(controller.phase, .loading)
+        XCTAssertFalse(controller.message.contains("Файлы проверены"))
+        await recognizer.finishLoad()
+        await waitForOperation(controller)
+        XCTAssertEqual(controller.phase, .ready)
+        XCTAssertNil(controller.loadingStartedAt)
+        await store.publishLateProgress()
+        try? await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(controller.message, "Модель готова. Можно диктовать.")
+    }
+    func testCancelDuringMemoryLoadingPreservesNonReadyState() async {
+        let recognizer = FakeRecognizer(holdLoad: true)
+        let controller = VoiceController(defaults: UserDefaults(suiteName: UUID().uuidString)!, store: FakeStore(), recognizer: recognizer,
+            microphoneAuthorized: { true }, availableDevices: { [] })
+        controller.prepare(download: false)
+        for _ in 0..<100 where controller.phase != .loading { try? await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(controller.phase, .loading)
+        controller.cancel()
+        XCTAssertEqual(controller.phase, .cancelling)
+        await recognizer.finishLoad()
+        await waitForOperation(controller)
+        XCTAssertEqual(controller.phase, .idle)
+        XCTAssertFalse(controller.canRecord)
+        XCTAssertNil(controller.loadingStartedAt)
+        XCTAssertEqual(controller.message, "Операция отменена.")
     }
     func testPartialPreferencesPreserveValidFields() throws {
         let name = UUID().uuidString
@@ -388,34 +507,52 @@ final class AudioTests: XCTestCase {
 }
 
 private actor FakeStore: ModelPreparing {
+    private var publish: (@Sendable (ModelProgress) -> Void)?
     func prepare(_ model: SpeechModel, allowNetwork: Bool, publish: @escaping @Sendable (ModelProgress) -> Void) async throws -> URL {
-        URL(fileURLWithPath: "/tmp/synthetic-model")
+        self.publish = publish
+        return URL(fileURLWithPath: "/tmp/synthetic-model")
     }
+    func publishLateProgress() { publish?(.init(completed: 100, total: 100, description: "Файлы проверены")) }
     func remove(_ model: SpeechModel) async throws {}
 }
 
 private actor FakeTransfer {
     let text: String
+    let failures: Int
+    let status: Int
+    let failureCode: URLError.Code
     private(set) var requests = 0
-    init(text: String) { self.text = text }
+    private(set) var lastTemporary: URL?
+    init(text: String, failures: Int = 0, status: Int = 200, failureCode: URLError.Code = .timedOut) {
+        self.text = text; self.failures = failures; self.status = status; self.failureCode = failureCode
+    }
     func fetch(_ request: URLRequest, progress: @Sendable (Int64) -> Void) throws -> (URL, URLResponse) {
         requests += 1
+        if requests <= failures { throw URLError(failureCode) }
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        lastTemporary = file
         try Data(text.utf8).write(to: file)
         progress(Int64(text.utf8.count))
-        return (file, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        return (file, HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
     }
 }
 
 private actor FakeRecognizer: SpeechRecognizing {
     let delayed: Bool
     let failLoad: Bool
+    let holdLoad: Bool
+    private var loadContinuation: CheckedContinuation<Void, Never>?
     private(set) var recognizing = false
     private(set) var unloads = 0
-    init(delayed: Bool = false, failLoad: Bool = false) { self.delayed = delayed; self.failLoad = failLoad }
-    func load(_ model: SpeechModel, directory: URL) async throws {
-        if failLoad { throw VoiceError("Synthetic load error") }
+    init(delayed: Bool = false, failLoad: Bool = false, holdLoad: Bool = false) {
+        self.delayed = delayed; self.failLoad = failLoad; self.holdLoad = holdLoad
     }
+    func load(_ model: SpeechModel, directory: URL, publish: @escaping @Sendable (String) -> Void) async throws {
+        if failLoad { throw VoiceError("Synthetic load error") }
+        publish("Синтетическая подготовка Core ML…")
+        if holdLoad { await withCheckedContinuation { loadContinuation = $0 } }
+    }
+    func finishLoad() { loadContinuation?.resume(); loadContinuation = nil }
     func recognize(_ file: URL, language: SpeechLanguage) async throws -> String {
         recognizing = true
         // Deliberately return a late result despite cancellation: the controller

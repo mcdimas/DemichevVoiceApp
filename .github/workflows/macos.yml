@@ -53,7 +53,7 @@ jobs:
             -destination 'platform=macOS,arch=arm64' -derivedDataPath build/Debug \
             -resultBundlePath build/Tests.xcresult -onlyUsePackageVersionsFromResolvedFile CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= test \
             2>&1 | tee build/tests.log
-          for tab in dictation settings dictionary; do test -s "build/ui/$tab.png"; done
+          for tab in dictation settings dictionary dictation-loading settings-loading settings-error; do test -s "build/ui/$tab.png"; done
       - name: Save UI snapshots
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

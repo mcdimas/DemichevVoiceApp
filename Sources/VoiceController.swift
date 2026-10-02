@@ -8,7 +8,7 @@ extension KeyboardShortcuts.Name {
     static let cancelVoice = Self("demichev.cancel", initial: .init(.escape))
 }
 
-enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, recognizing, cancelling }
+enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, recording, recognizing, cancelling }
 
 @MainActor @Observable final class VoiceController {
     private let defaults: UserDefaults
@@ -35,6 +35,9 @@ enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, r
     private(set) var message = "Выберите модель для локального распознавания."
     private(set) var error = ""
     private(set) var progress = 0.0
+    private(set) var modelBytesCompleted: Int64 = 0
+    private(set) var modelBytesTotal: Int64 = 0
+    private(set) var loadingStartedAt: Date?
     private(set) var level = 0.0
     private(set) var elapsed = 0
     private(set) var microphoneAllowed = false
@@ -42,8 +45,8 @@ enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, r
     private(set) var installedModels: Set<SpeechModel> = []
     var devices: [InputDevice] = []
     var canRecord: Bool { phase == .ready && microphoneAllowed }
-    var busy: Bool { [.preparing, .removing, .recording, .recognizing, .cancelling].contains(phase) }
-    var canCancel: Bool { [.preparing, .recording, .recognizing].contains(phase) }
+    var busy: Bool { [.preparing, .loading, .removing, .recording, .recognizing, .cancelling].contains(phase) }
+    var canCancel: Bool { [.preparing, .loading, .recording, .recognizing].contains(phase) }
     var shortcutsActive: Bool { started }
     var shortcutDescription: String { started ? KeyboardShortcuts.getShortcut(for: .recordVoice)?.description ?? "заданное сочетание клавиш" : "Control + Option + Пробел" }
 
@@ -107,6 +110,7 @@ enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, r
     func prepare(download: Bool, onlyIfInstalled: Bool = false) {
         guard !busy, operation == nil else { return }
         phase = .preparing; ready = false; error = ""; progress = 0
+        modelBytesCompleted = 0; modelBytesTotal = 0; loadingStartedAt = nil
         message = "Подготовка модели…"
         let model = preferences.model
         let id = UUID(); operationID = id
@@ -125,11 +129,19 @@ enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, r
                     Task { @MainActor in
                         guard let self, self.operationID == id, self.phase == .preparing else { return }
                         self.progress = status.fraction; self.message = status.description
+                        self.modelBytesCompleted = status.completed; self.modelBytesTotal = status.total
                     }
                 }
                 try Task.checkCancellation()
+                phase = .loading; loadingStartedAt = Date()
                 message = "Загрузка модели в память…"
-                try await recognizer.load(model, directory: directory)
+                refreshModels()
+                try await recognizer.load(model, directory: directory) { [weak self] status in
+                    Task { @MainActor in
+                        guard let self, self.operationID == id, self.phase == .loading else { return }
+                        self.message = status
+                    }
+                }
                 try Task.checkCancellation()
                 ready = true; message = "Модель готова. Можно диктовать."
             } catch { try? await recognizer.unload(); report(error) }
@@ -223,6 +235,7 @@ enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, r
     }
     private func finishOperation() {
         operation = nil; phase = ready ? .ready : .idle
+        loadingStartedAt = nil
         refreshModels()
         cancelShortcut(enabled: false)
     }
@@ -232,7 +245,7 @@ enum VoicePhase: Equatable { case idle, preparing, removing, ready, recording, r
     }
     private func report(_ failure: Error) {
         if Task.isCancelled || failure is CancellationError { message = "Операция отменена." }
-        else { error = failure.localizedDescription }
+        else { error = failure.localizedDescription; message = "Операция не завершена. См. ошибку выше." }
     }
 
     func shortcutDown() {
