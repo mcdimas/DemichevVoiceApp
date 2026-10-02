@@ -46,13 +46,20 @@ jobs:
           if-no-files-found: error
       - name: Build and unit tests without models
         env:
-          DEMICHEV_UI_SNAPSHOTS: ${{ github.workspace }}/build/ui
+          TEST_RUNNER_DEMICHEV_UI_SNAPSHOTS: ${{ github.workspace }}/build/ui
         run: |
           set -o pipefail
           xcodebuild -project DemichevVoice.xcodeproj -scheme DemichevVoice \
             -destination 'platform=macOS,arch=arm64' -derivedDataPath build/Debug \
             -resultBundlePath build/Tests.xcresult -onlyUsePackageVersionsFromResolvedFile CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= test \
             2>&1 | tee build/tests.log
+          for tab in dictation settings dictionary; do test -s "build/ui/$tab.png"; done
+      - name: Save UI snapshots
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ui-snapshots
+          path: build/ui/*.png
+          if-no-files-found: error
       - name: Build ad-hoc installer (not notarized)
         run: bash scripts/package.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

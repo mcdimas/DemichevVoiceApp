@@ -161,6 +161,9 @@ final class TextTests: XCTestCase {
             host.cacheDisplay(in: host.bounds, to: bitmap)
             let data = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
             XCTAssertGreaterThan(data.count, 1_000)
+            let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.png")
+            attachment.name = tab; attachment.lifetime = .keepAlways
+            add(attachment)
             if let directory = ProcessInfo.processInfo.environment["DEMICHEV_UI_SNAPSHOTS"] {
                 let root = URL(fileURLWithPath: directory, isDirectory: true)
                 try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
