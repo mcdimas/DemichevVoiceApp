@@ -75,6 +75,24 @@ struct VoicePreferences: Codable {
     var inputUID = ""
     var replacements: [WordReplacement] = []
 
+    private enum CodingKeys: String, CodingKey { case model, language, recordingMode, inputUID, replacements }
+    init() {}
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        // Recover fields independently. An older or damaged key must not erase
+        // the user's dictionary or unrelated settings.
+        model = (try? values.decode(SpeechModel.self, forKey: .model)) ?? .parakeet
+        language = (try? values.decode(SpeechLanguage.self, forKey: .language)) ?? .russian
+        recordingMode = (try? values.decode(RecordingMode.self, forKey: .recordingMode)) ?? .hold
+        inputUID = (try? values.decode(String.self, forKey: .inputUID)) ?? ""
+        replacements = (try? values.decode([WordReplacement].self, forKey: .replacements)) ?? []
+        var seen = Set<UUID>()
+        replacements = Array(replacements.filter {
+            !$0.original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            $0.original.count <= 100 && $0.replacement.count <= 300 && seen.insert($0.id).inserted
+        }.prefix(200))
+    }
+
     static let key = "independent.preferences.v1"
     static func read(_ defaults: UserDefaults) -> Self {
         guard let data = defaults.data(forKey: key), let value = try? JSONDecoder().decode(Self.self, from: data) else { return .init() }

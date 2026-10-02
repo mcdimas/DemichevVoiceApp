@@ -1,6 +1,27 @@
 import Foundation
 import CryptoKit
 
+enum StorageSafety {
+    static func rejectLink(_ url: URL) throws {
+        if (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
+            throw VoiceError("Каталог приложения содержит символическую ссылку. Выберите обычный каталог.")
+        }
+    }
+    static func check(_ target: URL, under root: URL) throws {
+        let base = root.standardizedFileURL
+        let target = target.standardizedFileURL
+        guard target.path == base.path || target.path.hasPrefix(base.path + "/") else {
+            throw VoiceError("Файл выходит за каталог приложения.")
+        }
+        try rejectLink(base)
+        var current = base
+        for part in target.path.dropFirst(base.path.count).split(separator: "/") {
+            current.appendPathComponent(String(part))
+            try rejectLink(current)
+        }
+    }
+}
+
 struct CatalogFile: Codable, Sendable {
     enum Algorithm: String, Codable, Sendable { case sha256, gitSHA1 }
     let relativePath: String
@@ -17,12 +38,13 @@ struct CatalogFile: Codable, Sendable {
         }
         let target = root.appendingPathComponent(relativePath).standardizedFileURL
         guard target.path.hasPrefix(root.standardizedFileURL.path + "/") else { throw VoiceError("Файл выходит за каталог модели.") }
+        try StorageSafety.check(target, under: root)
         return target
     }
 
     func verify(_ url: URL) throws -> Bool {
         let fm = FileManager.default
-        guard fm.fileExists(atPath: url.path),
+        guard (try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])).map({ $0.isRegularFile == true && $0.isSymbolicLink != true }) == true,
               (try fm.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.int64Value == byteCount else { return false }
         let stream = try FileHandle(forReadingFrom: url)
         defer { try? stream.close() }
@@ -42,10 +64,21 @@ struct ModelCatalog: Codable, Sendable {
     let name: String
     let files: [CatalogFile]
     var size: Int64 { files.reduce(0) { $0 + $1.byteCount } }
+    var fingerprint: String {
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+        return SHA256.hash(data: (try? encoder.encode(self)) ?? Data()).map { String(format: "%02x", $0) }.joined()
+    }
     static func bundled(_ model: SpeechModel) throws -> Self {
         guard let url = Bundle.main.url(forResource: model.rawValue, withExtension: "json") else { throw VoiceError("Список файлов модели отсутствует.") }
         let catalog = try JSONDecoder().decode(Self.self, from: Data(contentsOf: url))
         guard catalog.name == model.rawValue, !catalog.files.isEmpty else { throw VoiceError("Неверный список файлов модели.") }
+        guard Set(catalog.files.map(\.relativePath)).count == catalog.files.count,
+              catalog.files.allSatisfy({ file in
+                  file.byteCount > 0 && file.byteCount < 2_000_000_000 &&
+                  file.digest.range(of: file.algorithm == .sha256 ? "^[a-f0-9]{64}$" : "^[a-f0-9]{40}$", options: .regularExpression) != nil &&
+                  file.sourceURL.scheme == "https" && file.sourceURL.host == "huggingface.co" &&
+                  file.sourceURL.path.range(of: "/resolve/[a-f0-9]{40}/", options: .regularExpression) != nil
+              }), catalog.files.count < 1_000 else { throw VoiceError("Повреждён список файлов модели.") }
         return catalog
     }
 }
@@ -69,8 +102,15 @@ actor ModelStore {
     private var working = false
     init(root: URL = AppStorage.models) { self.root = root }
     nonisolated static func folder(_ model: SpeechModel, root: URL = AppStorage.models) -> URL { root.appendingPathComponent(model.rawValue, isDirectory: true) }
-    nonisolated static func isPresent(_ model: SpeechModel) -> Bool {
-        FileManager.default.fileExists(atPath: folder(model).appendingPathComponent(".installed").path)
+    nonisolated static func isPresent(_ model: SpeechModel, root: URL = AppStorage.models) -> Bool {
+        let marker = folder(model, root: root).appendingPathComponent(".installed")
+        guard (try? StorageSafety.check(marker, under: root)) != nil,
+              let properties = try? marker.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+              properties.isRegularFile == true, (properties.fileSize ?? 0) <= 128,
+              let value = try? String(contentsOf: marker, encoding: .utf8),
+              let catalog = try? ModelCatalog.bundled(model) else { return false }
+        // Accept the previous marker once; prepare still verifies every file.
+        return value == model.rawValue || value == catalog.fingerprint
     }
 
     func prepare(_ model: SpeechModel, allowNetwork: Bool, publish: @escaping @Sendable (ModelProgress) -> Void) async throws -> URL {
@@ -79,21 +119,26 @@ actor ModelStore {
         defer { working = false }
         let fm = FileManager.default
         let directory = Self.folder(model, root: root)
+        try StorageSafety.check(directory, under: root)
         try fm.createDirectory(at: directory, withIntermediateDirectories: true)
         let catalog = try ModelCatalog.bundled(model)
+        let marker = directory.appendingPathComponent(".installed")
+        try StorageSafety.check(marker, under: root)
+        if fm.fileExists(atPath: marker.path) { try fm.removeItem(at: marker) }
         let session = URLSession(configuration: .ephemeral)
         defer { session.invalidateAndCancel() }
         var completed: Int64 = 0
         for file in catalog.files {
             try Task.checkCancellation()
             let destination = try file.destination(under: directory)
+            try StorageSafety.check(destination, under: root)
             publish(.init(completed: completed, total: catalog.size, description: "Проверка файлов…"))
             if try file.verify(destination) { completed += file.byteCount; continue }
             guard allowNetwork else { throw VoiceError("Модель не установлена или файл повреждён. Нажмите «Скачать модель».") }
             guard file.sourceURL.scheme == "https", file.sourceURL.host == "huggingface.co",
                   file.sourceURL.path.range(of: "/resolve/[a-f0-9]{40}/", options: .regularExpression) != nil else { throw VoiceError("Источник модели не закреплён.") }
             let free = try directory.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage ?? 0
-            guard free > file.byteCount + 100_000_000 else { throw VoiceError("Недостаточно места для загрузки модели.") }
+            guard free > file.byteCount * 2 + 100_000_000 else { throw VoiceError("Недостаточно места для загрузки и проверки модели.") }
             let offset = completed
             let observer = TransferObserver { bytes in publish(.init(completed: offset + min(bytes, file.byteCount), total: catalog.size, description: "Загрузка модели…")) }
             var request = URLRequest(url: file.sourceURL)
@@ -104,12 +149,19 @@ actor ModelStore {
             guard (response as? HTTPURLResponse)?.statusCode == 200, try file.verify(temporary) else { throw VoiceError("Файл модели не прошёл проверку хеша. Повторите загрузку.") }
             try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
             // Move only validated files into this app's model directory.
-            if fm.fileExists(atPath: destination.path) { try fm.removeItem(at: destination) }
-            try fm.moveItem(at: temporary, to: destination)
+            // Stage on the destination volume before atomic replacement.
+            let staged = destination.deletingLastPathComponent().appendingPathComponent(".download-" + UUID().uuidString)
+            defer { try? fm.removeItem(at: staged) }
+            try fm.copyItem(at: temporary, to: staged)
+            try StorageSafety.check(destination, under: root)
+            if fm.fileExists(atPath: destination.path) {
+                _ = try fm.replaceItemAt(destination, withItemAt: staged)
+            } else { try fm.moveItem(at: staged, to: destination) }
             completed += file.byteCount
         }
         try Task.checkCancellation()
-        try Data(model.rawValue.utf8).write(to: directory.appendingPathComponent(".installed"), options: .atomic)
+        try StorageSafety.check(marker, under: root)
+        try Data(catalog.fingerprint.utf8).write(to: marker, options: .atomic)
         publish(.init(completed: catalog.size, total: catalog.size, description: "Файлы проверены"))
         return directory
     }
@@ -117,6 +169,7 @@ actor ModelStore {
     func remove(_ model: SpeechModel) throws {
         guard !working else { throw VoiceError("Сначала завершите загрузку.") }
         let directory = Self.folder(model, root: root)
+        try StorageSafety.check(directory, under: root)
         if FileManager.default.fileExists(atPath: directory.path) { try FileManager.default.removeItem(at: directory) }
     }
 }

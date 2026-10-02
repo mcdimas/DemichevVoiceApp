@@ -68,6 +68,31 @@ final class CatalogTests: XCTestCase {
         } catch { XCTAssertTrue(error.localizedDescription.contains("не установлена")) }
         XCTAssertFalse(FileManager.default.fileExists(atPath: ModelStore.folder(.parakeet, root: root).appendingPathComponent(".installed").path))
     }
+    func testFailedVerificationInvalidatesInstalledMarker() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let directory = ModelStore.folder(.parakeet, root: root)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("parakeet".utf8).write(to: directory.appendingPathComponent(".installed"))
+        XCTAssertTrue(ModelStore.isPresent(.parakeet, root: root))
+        do { _ = try await ModelStore(root: root).prepare(.parakeet, allowNetwork: false) { _ in }; XCTFail("Missing model") }
+        catch {}
+        XCTAssertFalse(ModelStore.isPresent(.parakeet, root: root))
+    }
+    func testSymlinkCannotReadOrDeleteOutsideModelStorage() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let outside = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root); try? FileManager.default.removeItem(at: outside) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        try Data("sentinel".utf8).write(to: outside.appendingPathComponent("file"))
+        try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("parakeet"), withDestinationURL: outside)
+        do { try await ModelStore(root: root).remove(.parakeet); XCTFail("Link must be rejected") } catch {}
+        let entry = CatalogFile(relativePath: "parakeet/file", sourceURL: URL(string: "https://example.com")!, byteCount: 8, digest: "", algorithm: .sha256)
+        XCTAssertThrowsError(try entry.destination(under: root))
+        XCTAssertFalse(try entry.verify(root.appendingPathComponent("parakeet")))
+        XCTAssertEqual(try String(contentsOf: outside.appendingPathComponent("file"), encoding: .utf8), "sentinel")
+    }
 }
 
 final class TextTests: XCTestCase {
@@ -93,6 +118,21 @@ final class TextTests: XCTestCase {
 }
 
 @MainActor final class ControllerTests: XCTestCase {
+    func testPartialPreferencesPreserveValidFields() throws {
+        let name = UUID().uuidString
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let dictionary = [WordReplacement(original: "тест", replacement: "test")]
+        let rules = try JSONSerialization.jsonObject(with: JSONEncoder().encode(dictionary))
+        let fields: [String: Any] = ["model": "future-model", "language": "english", "inputUID": "chosen-input", "replacements": rules]
+        defaults.set(try JSONSerialization.data(withJSONObject: fields), forKey: VoicePreferences.key)
+        let restored = VoicePreferences.read(defaults)
+        XCTAssertEqual(restored.model, .parakeet)
+        XCTAssertEqual(restored.recordingMode, .hold)
+        XCTAssertEqual(restored.language, .english)
+        XCTAssertEqual(restored.inputUID, "chosen-input")
+        XCTAssertEqual(restored.replacements, dictionary)
+    }
     func testPreferencesAndDictionaryPersistOnlyInChosenSuite() {
         let name = "ru.demichev.voice.tests." + UUID().uuidString
         let defaults = UserDefaults(suiteName: name)!
