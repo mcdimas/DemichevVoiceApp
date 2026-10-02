@@ -11,10 +11,12 @@ struct InputDevice: Identifiable, Equatable {
 enum InputDevices {
     private static func property(_ device: AudioDeviceID, selector: AudioObjectPropertySelector) -> String? {
         var address = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-        var result: CFString? = nil
-        var length = UInt32(MemoryLayout<CFString?>.size)
-        guard AudioObjectGetPropertyData(device, &address, 0, nil, &length, &result) == noErr else { return nil }
-        return result as String?
+        let result = UnsafeMutablePointer<Unmanaged<CFString>?>.allocate(capacity: 1)
+        result.initialize(to: nil)
+        defer { result.deinitialize(count: 1); result.deallocate() }
+        var length = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &length, result) == noErr else { return nil }
+        return result.pointee?.takeRetainedValue() as String?
     }
     static func available() -> [InputDevice] {
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
@@ -45,10 +47,12 @@ private final class AudioFileSink: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         guard let file, writeFailure == nil else { return }
         do { try file.write(from: buffer) } catch { writeFailure = error }
-        guard let channel = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return }
+        guard let channels = buffer.floatChannelData, buffer.frameLength > 0 else { return }
         var energy = 0.0
-        for frame in 0..<Int(buffer.frameLength) { energy += Double(channel[frame]) * Double(channel[frame]) }
-        currentLevel = AudioCapture.level(energy: energy / Double(buffer.frameLength))
+        for channel in 0..<Int(buffer.format.channelCount) {
+            for frame in 0..<Int(buffer.frameLength) { energy += Double(channels[channel][frame]) * Double(channels[channel][frame]) }
+        }
+        currentLevel = AudioCapture.level(energy: energy / Double(buffer.frameLength) / Double(max(1, buffer.format.channelCount)))
     }
     func meter() -> Double { lock.lock(); defer { lock.unlock() }; return currentLevel }
     func failure() -> Error? { lock.lock(); defer { lock.unlock() }; return writeFailure }
@@ -59,12 +63,38 @@ private final class AudioFileSink: @unchecked Sendable {
     }
 }
 
-@MainActor final class AudioCapture {
+@MainActor protocol AudioRecording: AnyObject {
+    var amplitude: Double { get }
+    var failure: Error? { get }
+    func begin(inputUID: String) throws
+    func finish() throws -> URL?
+    func discard()
+}
+
+enum RecordingFiles {
+    static func purgeExpired(under root: URL = AppStorage.audio, now: Date = Date()) throws {
+        try StorageSafety.check(root, under: root)
+        guard FileManager.default.fileExists(atPath: root.path) else { return }
+        for url in try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .contentModificationDateKey]) {
+            guard url.pathExtension == "caf", UUID(uuidString: url.deletingPathExtension().lastPathComponent) != nil,
+                  let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .contentModificationDateKey]),
+                  values.isRegularFile == true, values.isSymbolicLink != true,
+                  let date = values.contentModificationDate, now.timeIntervalSince(date) > 86_400 else { continue }
+            try FileManager.default.removeItem(at: url)
+        }
+    }
+}
+
+@MainActor final class AudioCapture: AudioRecording {
     private var engine: AVAudioEngine?
     private var sink: AudioFileSink?
     private var url: URL?
     var amplitude: Double { sink?.meter() ?? 0 }
-    var failure: Error? { sink?.failure() }
+    var failure: Error? {
+        if let error = sink?.failure() { return error }
+        if let engine, !engine.isRunning { return VoiceError("Аудиоустройство изменилось или запись прервана. Начните запись снова.") }
+        return nil
+    }
 
     nonisolated static func level(energy: Double) -> Double {
         guard energy.isFinite, energy > 0 else { return 0 }
@@ -87,9 +117,14 @@ private final class AudioFileSink: @unchecked Sendable {
         }
         let format = node.outputFormat(forBus: 0)
         guard format.channelCount > 0, format.sampleRate > 0 else { throw VoiceError("Микрофон не передаёт звук.") }
-        try FileManager.default.createDirectory(at: AppStorage.audio, withIntermediateDirectories: true)
+        try StorageSafety.check(AppStorage.audio, under: AppStorage.audio)
+        try FileManager.default.createDirectory(at: AppStorage.audio, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let file = AppStorage.audio.appendingPathComponent(UUID().uuidString).appendingPathExtension("caf")
-        let sink = try AudioFileSink(url: file, format: format)
+        let sink: AudioFileSink
+        do {
+            sink = try AudioFileSink(url: file, format: format)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        } catch { try? FileManager.default.removeItem(at: file); throw error }
         node.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in sink.accept(buffer) }
         do { try engine.start() }
         catch {

@@ -1,9 +1,16 @@
 import Foundation
 import CoreML
+import AVFoundation
 @preconcurrency import WhisperKit
 @preconcurrency import FluidAudio
 
-actor RecognitionEngine {
+protocol SpeechRecognizing: Sendable {
+    func load(_ model: SpeechModel, directory: URL) async throws
+    func recognize(_ file: URL, language: SpeechLanguage) async throws -> String
+    func unload() async throws
+}
+
+actor RecognitionEngine: SpeechRecognizing {
     private var whisper: WhisperKit?
     private var parakeet: AsrManager?
     private var active: SpeechModel?
@@ -14,8 +21,8 @@ actor RecognitionEngine {
         occupied = true
         defer { occupied = false }
         try Task.checkCancellation()
-        if active == model { return }
         await releaseModels()
+        do {
         switch model {
         case .whisper:
             let options = WhisperKitConfig(modelFolder: directory.path, tokenizerFolder: directory,
@@ -41,6 +48,7 @@ actor RecognitionEngine {
         }
         try Task.checkCancellation()
         active = model
+        } catch { await releaseModels(); throw error }
     }
 
     func recognize(_ file: URL, language: SpeechLanguage) async throws -> String {
@@ -48,7 +56,9 @@ actor RecognitionEngine {
         occupied = true
         defer { occupied = false }
         try Task.checkCancellation()
+        try Self.validateAudio(file)
         let samples = try AudioConverter(sampleRate: 16_000).resampleAudioFile(file)
+        try Task.checkCancellation()
         guard samples.count <= 16_000 * 600 else { throw VoiceError("Максимальная длина записи — 10 минут.") }
         guard Self.containsSignal(samples) else { return "" }
         let text: String
@@ -71,11 +81,23 @@ actor RecognitionEngine {
         return energy.isFinite && energy > 0.00000001
     }
 
+    nonisolated static func validateAudio(_ url: URL) throws {
+        let file = try AVAudioFile(forReading: url)
+        guard file.processingFormat.sampleRate.isFinite, file.processingFormat.sampleRate > 0,
+              file.length >= 0, Double(file.length) / file.processingFormat.sampleRate <= 600,
+              file.processingFormat.channelCount > 0, file.processingFormat.channelCount <= 32 else {
+            throw VoiceError("Неподдерживаемая запись или длительность больше 10 минут.")
+        }
+    }
+
     func unload() async throws {
         guard !occupied else { throw VoiceError("Дождитесь завершения распознавания.") }
+        occupied = true
+        defer { occupied = false }
         await releaseModels()
     }
     private func releaseModels() async {
+        active = nil
         if let whisper { await whisper.unloadModels() }
         if let parakeet { await parakeet.cleanup() }
         whisper = nil; parakeet = nil; active = nil

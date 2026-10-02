@@ -97,7 +97,12 @@ private final class TransferObserver: NSObject, URLSessionDownloadDelegate, @unc
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) { publish(totalBytesWritten) }
 }
 
-actor ModelStore {
+protocol ModelPreparing: Sendable {
+    func prepare(_ model: SpeechModel, allowNetwork: Bool, publish: @escaping @Sendable (ModelProgress) -> Void) async throws -> URL
+    func remove(_ model: SpeechModel) async throws
+}
+
+actor ModelStore: ModelPreparing {
     let root: URL
     private var working = false
     init(root: URL = AppStorage.models) { self.root = root }

@@ -1,5 +1,6 @@
 import XCTest
 import AppKit
+import AVFoundation
 @testable import DemichevVoice
 
 final class CatalogTests: XCTestCase {
@@ -118,6 +119,80 @@ final class TextTests: XCTestCase {
 }
 
 @MainActor final class ControllerTests: XCTestCase {
+    private func waitForOperation(_ controller: VoiceController) async {
+        for _ in 0..<100 where controller.busy && controller.phase != .recording { try? await Task.sleep(for: .milliseconds(10)) }
+    }
+    private func session(recognizer: FakeRecognizer = FakeRecognizer(), capture: FakeCapture = FakeCapture()) async -> (VoiceController, NSPasteboard) {
+        let board = NSPasteboard.withUniqueName()
+        let controller = VoiceController(defaults: UserDefaults(suiteName: UUID().uuidString)!, clipboard: board,
+            modelRoot: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),
+            store: FakeStore(), recognizer: recognizer, capture: capture, microphoneAuthorized: { true }, availableDevices: { [] })
+        controller.prepare(download: false)
+        await waitForOperation(controller)
+        XCTAssertEqual(controller.phase, .ready)
+        return (controller, board)
+    }
+    func testReleaseOfUnrelatedShortcutCannotStopButtonRecording() async {
+        let capture = FakeCapture()
+        let (controller, board) = await session(capture: capture)
+        defer { controller.cancel(); board.releaseGlobally() }
+        controller.beginRecording()
+        controller.shortcutDown(); controller.shortcutUp()
+        XCTAssertEqual(controller.phase, .recording)
+        XCTAssertEqual(capture.finished, 0)
+    }
+    func testHoldShortcutStopsOnlyItsOwnRecording() async {
+        let capture = FakeCapture()
+        let (controller, board) = await session(capture: capture)
+        defer { controller.cancel(); board.releaseGlobally() }
+        controller.shortcutDown(); controller.shortcutUp()
+        await waitForOperation(controller)
+        XCTAssertEqual(capture.finished, 1)
+        XCTAssertEqual(controller.phase, .ready)
+        XCTAssertEqual(board.string(forType: .string), "synthetic result")
+    }
+    func testCancelledRecognitionCannotPublishLateResultOrLeaveFile() async {
+        let recognizer = FakeRecognizer(delayed: true)
+        let capture = FakeCapture()
+        let (controller, board) = await session(recognizer: recognizer, capture: capture)
+        defer { board.releaseGlobally() }
+        controller.publish("keep")
+        controller.beginRecording(); controller.endRecording()
+        for _ in 0..<100 { if await recognizer.recognizing { break }; try? await Task.sleep(for: .milliseconds(1)) }
+        controller.cancel()
+        XCTAssertEqual(controller.phase, .cancelling)
+        XCTAssertFalse(controller.canRecord)
+        await waitForOperation(controller)
+        XCTAssertEqual(controller.phase, .ready)
+        XCTAssertEqual(controller.transcript, "keep")
+        XCTAssertEqual(board.string(forType: .string), "keep")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: capture.file.path))
+    }
+    func testCaptureFailurePreservesPreviousResultAndCanRetry() async {
+        let capture = FakeCapture(); capture.failBegin = true
+        let (controller, board) = await session(capture: capture)
+        defer { controller.cancel(); board.releaseGlobally() }
+        controller.publish("keep")
+        controller.beginRecording()
+        XCTAssertEqual(controller.phase, .ready)
+        XCTAssertFalse(controller.error.isEmpty)
+        XCTAssertEqual(controller.transcript, "keep")
+        capture.failBegin = false; controller.beginRecording()
+        XCTAssertEqual(controller.phase, .recording)
+        XCTAssertTrue(controller.error.isEmpty)
+    }
+    func testFailedLoadUnloadsEngineAndCannotRecord() async {
+        let recognizer = FakeRecognizer(failLoad: true)
+        let controller = VoiceController(defaults: UserDefaults(suiteName: UUID().uuidString)!, store: FakeStore(), recognizer: recognizer,
+            microphoneAuthorized: { true }, availableDevices: { [] })
+        controller.prepare(download: false)
+        await waitForOperation(controller)
+        XCTAssertEqual(controller.phase, .idle)
+        XCTAssertFalse(controller.canRecord)
+        XCTAssertFalse(controller.error.isEmpty)
+        let unloads = await recognizer.unloads
+        XCTAssertEqual(unloads, 2)
+    }
     func testPartialPreferencesPreserveValidFields() throws {
         let name = UUID().uuidString
         let defaults = UserDefaults(suiteName: name)!
@@ -209,6 +284,27 @@ final class TextTests: XCTestCase {
 }
 
 final class AudioTests: XCTestCase {
+    func testExpiredRecordingCleanupPreservesRecentAndUnrelatedFiles() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let old = root.appendingPathComponent(UUID().uuidString + ".caf")
+        let recent = root.appendingPathComponent(UUID().uuidString + ".caf")
+        let other = root.appendingPathComponent("user.caf")
+        for file in [old, recent, other] { try Data("synthetic".utf8).write(to: file) }
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-90_000)], ofItemAtPath: old.path)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-90_000)], ofItemAtPath: other.path)
+        try RecordingFiles.purgeExpired(under: root)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: old.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: recent.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: other.path))
+    }
+    func testInvalidAudioIsRejectedBeforeModelInference() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        defer { try? FileManager.default.removeItem(at: file) }
+        try Data("not audio".utf8).write(to: file)
+        XCTAssertThrowsError(try RecognitionEngine.validateAudio(file))
+    }
     func testSilenceShortBuffersAndInvalidSamplesProduceNoSpeech() {
         XCTAssertFalse(RecognitionEngine.containsSignal(Array(repeating: 0, count: 16_000)))
         XCTAssertFalse(RecognitionEngine.containsSignal(Array(repeating: 1, count: 100)))
@@ -222,6 +318,46 @@ final class AudioTests: XCTestCase {
         XCTAssertEqual(AudioCapture.level(energy: 1), 1)
         XCTAssertEqual(AudioCapture.level(energy: 0.01), AudioCapture.level(energy: 0.01))
     }
+}
+
+private actor FakeStore: ModelPreparing {
+    func prepare(_ model: SpeechModel, allowNetwork: Bool, publish: @escaping @Sendable (ModelProgress) -> Void) async throws -> URL {
+        URL(fileURLWithPath: "/tmp/synthetic-model")
+    }
+    func remove(_ model: SpeechModel) async throws {}
+}
+
+private actor FakeRecognizer: SpeechRecognizing {
+    let delayed: Bool
+    let failLoad: Bool
+    private(set) var recognizing = false
+    private(set) var unloads = 0
+    init(delayed: Bool = false, failLoad: Bool = false) { self.delayed = delayed; self.failLoad = failLoad }
+    func load(_ model: SpeechModel, directory: URL) async throws {
+        if failLoad { throw VoiceError("Synthetic load error") }
+    }
+    func recognize(_ file: URL, language: SpeechLanguage) async throws -> String {
+        recognizing = true
+        // Deliberately return a late result despite cancellation: the controller
+        // must discard it even when a dependency fails to cooperate.
+        if delayed { try? await Task.sleep(for: .seconds(10)) }
+        return "synthetic result"
+    }
+    func unload() async throws { unloads += 1 }
+}
+
+@MainActor private final class FakeCapture: AudioRecording {
+    let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+    var amplitude: Double { 0 }
+    var failure: Error? { nil }
+    var failBegin = false
+    var finished = 0
+    func begin(inputUID: String) throws {
+        if failBegin { throw VoiceError("Synthetic capture error") }
+        try Data("synthetic fixture".utf8).write(to: file)
+    }
+    func finish() throws -> URL? { finished += 1; return file }
+    func discard() { try? FileManager.default.removeItem(at: file) }
 }
 
 final class IntegrationTests: XCTestCase {

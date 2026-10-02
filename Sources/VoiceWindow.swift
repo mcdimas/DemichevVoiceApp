@@ -108,15 +108,15 @@ struct VoiceWindow: View {
                             Image(systemName: controller.preferences.model == model ? "checkmark.circle.fill" : "circle").foregroundStyle(.blue)
                             VStack(alignment: .leading) { Text(model.title); Text(model.detail).font(.caption).foregroundStyle(.secondary) }
                             Spacer()
-                            if ModelStore.isPresent(model) { Text("На Mac").font(.caption).foregroundStyle(.secondary) }
+                            if controller.installedModels.contains(model) { Text("На Mac").font(.caption).foregroundStyle(.secondary) }
                             Button("Выбрать") { controller.selectModel(model) }.disabled(controller.busy || controller.preferences.model == model)
                         }
                     }
                     HStack {
                         Button("Скачать модель") { controller.prepare(download: true) }.buttonStyle(.borderedProminent).disabled(controller.busy)
-                        Button("Загрузить без сети") { controller.prepare(download: false) }.disabled(controller.busy || !ModelStore.isPresent(controller.preferences.model))
+                        Button("Загрузить без сети") { controller.prepare(download: false) }.disabled(controller.busy || !controller.installedModels.contains(controller.preferences.model))
                         Spacer()
-                        Button("Удалить…", role: .destructive) { confirmRemoval = true }.disabled(controller.busy || !ModelStore.isPresent(controller.preferences.model))
+                        Button("Удалить…", role: .destructive) { confirmRemoval = true }.disabled(controller.busy)
                     }
                     if controller.phase == .preparing { ProgressView(value: controller.progress); Text(controller.message).font(.caption) }
                 }.padding(12)
