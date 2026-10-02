@@ -284,6 +284,14 @@ final class TextTests: XCTestCase {
 }
 
 final class AudioTests: XCTestCase {
+    func testDiagnosticArgumentsRejectMissingPathAndConflictingActions() {
+        XCTAssertEqual(LaunchCommand.parse(["app"]), .normal)
+        XCTAssertEqual(LaunchCommand.parse(["app", "--install-models"]), .installModels)
+        XCTAssertEqual(LaunchCommand.parse(["app", "--check-audio"]), .invalid)
+        XCTAssertEqual(LaunchCommand.parse(["app", "--check-audio", "--install-models"]), .invalid)
+        XCTAssertEqual(LaunchCommand.parse(["app", "--install-models", "--install-models"]), .invalid)
+        XCTAssertEqual(LaunchCommand.parse(["app", "--check-audio", "/tmp/synthetic.aiff"]), .checkAudio(URL(fileURLWithPath: "/tmp/synthetic.aiff")))
+    }
     func testExpiredRecordingCleanupPreservesRecentAndUnrelatedFiles() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }

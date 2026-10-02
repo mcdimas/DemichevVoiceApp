@@ -2,6 +2,21 @@ import SwiftUI
 import AppKit
 import AVFoundation
 
+enum LaunchCommand: Equatable {
+    case normal, installModels, checkAudio(URL), invalid
+    static func parse(_ arguments: [String]) -> Self {
+        let installs = arguments.filter { $0 == "--install-models" }.count
+        let checks = arguments.filter { $0 == "--check-audio" }.count
+        guard installs + checks <= 1 else { return .invalid }
+        if installs == 1 { return .installModels }
+        if let index = arguments.firstIndex(of: "--check-audio") {
+            guard arguments.count > index + 1, !arguments[index + 1].hasPrefix("--") else { return .invalid }
+            return .checkAudio(URL(fileURLWithPath: arguments[index + 1]))
+        }
+        return .normal
+    }
+}
+
 @main struct DemichevVoiceApp: App {
     @NSApplicationDelegateAdaptor(VoiceAppDelegate.self) private var delegate
     @State private var controller = VoiceController()
@@ -11,7 +26,7 @@ import AVFoundation
             if underTest { EmptyView() } else {
             VoiceWindow(controller: controller)
                 .preferredColorScheme(.light)
-                .task { if !underTest && !ProcessInfo.processInfo.arguments.contains("--check-audio") && !ProcessInfo.processInfo.arguments.contains("--install-models") { controller.start() } }
+                .task { if !underTest && LaunchCommand.parse(ProcessInfo.processInfo.arguments) == .normal { controller.start() } }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in if !underTest { controller.refreshPermissions() } }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in controller.cancel() }
             }
@@ -46,10 +61,14 @@ struct MenuContent: View {
 final class VoiceAppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let arguments = ProcessInfo.processInfo.arguments
-        if let index = arguments.firstIndex(of: "--check-audio"), arguments.count > index + 1 {
-            Task { await OfflineCheck.run(audio: URL(fileURLWithPath: arguments[index + 1])) }
-        } else if arguments.contains("--install-models") {
+        switch LaunchCommand.parse(ProcessInfo.processInfo.arguments) {
+        case .normal: break
+        case .invalid:
+            FileHandle.standardError.write(Data("Supply --check-audio /absolute/path or --install-models separately.\n".utf8))
+            exit(2)
+        case .checkAudio(let audio):
+            Task { await OfflineCheck.run(audio: audio) }
+        case .installModels:
             Task {
                 do {
                     let store = ModelStore()
@@ -67,6 +86,7 @@ final class VoiceAppDelegate: NSObject, NSApplicationDelegate {
 @MainActor enum OfflineCheck {
     static func run(audio: URL) async {
         do {
+            try RecognitionEngine.validateAudio(audio)
             let store = ModelStore(); let engine = RecognitionEngine()
             for model in SpeechModel.allCases {
                 let path = try await store.prepare(model, allowNetwork: false) { _ in }
@@ -84,9 +104,16 @@ final class VoiceAppDelegate: NSObject, NSApplicationDelegate {
                 cancelled.cancel()
                 do { _ = try await cancelled.value; throw VoiceError("Отмена вернула результат.") }
                 catch is CancellationError {}
+                // Also verify model reloading and that a cancelled request does
+                // not leave the recognizer locked for the next dictation.
+                try await engine.unload()
+                try await engine.load(model, directory: path)
+                let retry = try await engine.recognize(audio, language: .automatic)
+                guard !retry.isEmpty else { throw VoiceError("Распознавание не восстановилось после отмены.") }
                 // Do not log the transcript or retain the user's audio.
                 print("OFFLINE_OK \(model.rawValue)")
             }
+            try await engine.unload()
             exit(0)
         } catch { FileHandle.standardError.write(Data("OFFLINE_FAILED: \(error.localizedDescription)\n".utf8)); exit(1) }
     }
