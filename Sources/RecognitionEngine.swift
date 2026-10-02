@@ -22,6 +22,7 @@ actor RecognitionEngine: SpeechRecognizing {
         defer { occupied = false }
         try Task.checkCancellation()
         await releaseModels()
+        try Task.checkCancellation()
         do {
         switch model {
         case .whisper:
@@ -30,6 +31,7 @@ actor RecognitionEngine: SpeechRecognizing {
             whisper = try await WhisperKit(options)
         case .parakeet:
             func compiled(_ name: String, cpu: Bool = false) throws -> MLModel {
+                try Task.checkCancellation()
                 let options = MLModelConfiguration()
                 options.computeUnits = cpu ? .cpuOnly : .cpuAndNeuralEngine
                 return try MLModel(contentsOf: directory.appendingPathComponent(name + ".mlmodelc"), configuration: options)
@@ -83,7 +85,7 @@ actor RecognitionEngine: SpeechRecognizing {
 
     nonisolated static func validateAudio(_ url: URL) throws {
         let file = try AVAudioFile(forReading: url)
-        guard file.processingFormat.sampleRate.isFinite, file.processingFormat.sampleRate > 0,
+        guard file.processingFormat.sampleRate.isFinite, file.processingFormat.sampleRate > 0, file.processingFormat.sampleRate <= 192_000,
               file.length >= 0, Double(file.length) / file.processingFormat.sampleRate <= 600,
               file.processingFormat.channelCount > 0, file.processingFormat.channelCount <= 32 else {
             throw VoiceError("Неподдерживаемая запись или длительность больше 10 минут.")

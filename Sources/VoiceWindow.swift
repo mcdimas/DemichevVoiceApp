@@ -95,7 +95,7 @@ struct VoiceWindow: View {
             if !controller.transcript.isEmpty {
                 GroupBox {
                     VStack(alignment: .leading, spacing: 12) {
-                        HStack { Text("Результат").fontWeight(.semibold); Spacer(); Button("Скопировать") { controller.copyTranscript() } }
+                        HStack { Text("Последний результат").fontWeight(.semibold); Spacer(); Button("Скопировать") { controller.copyTranscript() } }
                         Text(controller.transcript).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
                     }.padding(12)
                 }
