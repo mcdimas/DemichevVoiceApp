@@ -6,6 +6,30 @@ import SwiftUI
 @testable import DemichevVoice
 
 final class CatalogTests: XCTestCase {
+    func testStagingCleanupRemovesOnlyExpiredOwnedRegularFiles() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = ModelStore.folder(.parakeet, root: root)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let old = folder.appendingPathComponent(".download-" + UUID().uuidString)
+        let recent = folder.appendingPathComponent(".download-" + UUID().uuidString)
+        let unrelated = folder.appendingPathComponent(".download-user-file")
+        let sentinel = folder.appendingPathComponent("weights.bin")
+        let listedWeight = folder.appendingPathComponent(".download-" + UUID().uuidString)
+        for file in [old, recent, unrelated, sentinel, listedWeight] { try Data("keep".utf8).write(to: file) }
+        let now = Date().addingTimeInterval(90_000)
+        try FileManager.default.setAttributes([.modificationDate: now], ofItemAtPath: recent.path)
+        let link = folder.appendingPathComponent(".download-" + UUID().uuidString)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: sentinel)
+        let original = smallCatalog().files[0]
+        let catalog = ModelCatalog(name: "parakeet", files: [original,
+            .init(relativePath: listedWeight.lastPathComponent, sourceURL: original.sourceURL,
+                  byteCount: original.byteCount, digest: original.digest, algorithm: original.algorithm)])
+        try ModelStore.purgeExpiredStaging(.parakeet, root: root, catalog: catalog, now: now)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: old.path))
+        for file in [recent, unrelated, sentinel, listedWeight, link] { XCTAssertTrue(FileManager.default.fileExists(atPath: file.path)) }
+        XCTAssertEqual(try String(contentsOf: sentinel, encoding: .utf8), "keep")
+    }
     private func smallCatalog() -> ModelCatalog {
         ModelCatalog(name: "parakeet", files: [.init(relativePath: "weights.bin",
             sourceURL: URL(string: "https://huggingface.co/test/model/resolve/0000000000000000000000000000000000000000/weights.bin")!, byteCount: 6,

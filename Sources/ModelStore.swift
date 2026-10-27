@@ -147,6 +147,28 @@ actor ModelStore: ModelPreparing {
         self.retryDelay = retryDelay
     }
     nonisolated static func folder(_ model: SpeechModel, root: URL = AppStorage.models) -> URL { root.appendingPathComponent(model.rawValue, isDirectory: true) }
+    nonisolated static func purgeExpiredStaging(_ model: SpeechModel, root: URL, catalog: ModelCatalog, now: Date = Date()) throws {
+        let directory = folder(model, root: root)
+        try StorageSafety.checkContainer(directory, root: root)
+        let destinations = try Set(catalog.files.map { try $0.destination(under: directory) })
+        let parents = Set(destinations.map { $0.deletingLastPathComponent() })
+        let fm = FileManager.default
+        for parent in parents where fm.fileExists(atPath: parent.path) {
+            try Task.checkCancellation()
+            try StorageSafety.checkContainer(parent, root: root)
+            for file in try fm.contentsOfDirectory(at: parent, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .creationDateKey, .contentModificationDateKey]) {
+                let name = file.lastPathComponent
+                guard !destinations.contains(file.standardizedFileURL), name.hasPrefix(".download-"),
+                      UUID(uuidString: String(name.dropFirst(10))) != nil else { continue }
+                let values = try file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .creationDateKey, .contentModificationDateKey])
+                guard values.isRegularFile == true, values.isSymbolicLink != true,
+                      let created = values.creationDate, let modified = values.contentModificationDate,
+                      now.timeIntervalSince(max(created, modified)) > 86_400 else { continue }
+                try StorageSafety.checkContainer(file, root: root)
+                try fm.removeItem(at: file)
+            }
+        }
+    }
     nonisolated static func isPresent(_ model: SpeechModel, root: URL = AppStorage.models) -> Bool {
         let marker = folder(model, root: root).appendingPathComponent(".installed")
         guard (try? StorageSafety.checkContainer(marker, root: root)) != nil,
@@ -169,6 +191,7 @@ actor ModelStore: ModelPreparing {
         try fm.createDirectory(at: directory, withIntermediateDirectories: true)
         let catalog = try catalogOverride ?? ModelCatalog.bundled(model)
         try catalog.validate(for: model)
+        try Self.purgeExpiredStaging(model, root: root, catalog: catalog)
         let marker = directory.appendingPathComponent(".installed")
         try StorageSafety.checkContainer(marker, root: root)
         func invalidateMarker() throws {
