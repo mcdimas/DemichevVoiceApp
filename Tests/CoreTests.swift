@@ -264,6 +264,22 @@ final class CatalogTests: XCTestCase {
 }
 
 final class TextTests: XCTestCase {
+    @MainActor func testDictionaryWorkAllowsMainActorCancellation() async throws {
+        let rules = (0..<200).map { WordReplacement(original: "термин\($0)", replacement: "слово\($0)") }
+        let input = String(repeating: "термин199 термин42 термин0, ", count: 10_000)
+        let (started, continuation) = AsyncStream<Void>.makeStream()
+        defer { continuation.finish() }
+        let work = Task {
+            continuation.yield(())
+            return try await ReplacementPipeline.process(input, rules: rules)
+        }
+        var iterator = started.makeAsyncIterator()
+        _ = await iterator.next()
+        try await Task.sleep(for: .milliseconds(10))
+        work.cancel()
+        do { _ = try await work.value; XCTFail("Main actor cancellation must run during dictionary processing") }
+        catch is CancellationError {}
+    }
     func testAsyncDictionaryProcessingPreservesUnicodeAndHonorsCancellation() async throws {
         let rules = [WordReplacement(original: "Straße", replacement: "street")]
         let result = try await ReplacementPipeline.process(" STRASSE ", rules: rules)
