@@ -90,6 +90,37 @@ final class CatalogTests: XCTestCase {
         let requests = await transfer.requests
         XCTAssertEqual(requests, 1)
     }
+    func testCancelledVerificationPreservesPreviouslyInstalledModel() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = ModelStore.folder(.parakeet, root: root)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("hello\n".utf8).write(to: folder.appendingPathComponent("weights.bin"))
+        try Data("parakeet".utf8).write(to: folder.appendingPathComponent(".installed"))
+        XCTAssertTrue(ModelStore.isPresent(.parakeet, root: root))
+        let store = ModelStore(root: root, catalog: smallCatalog())
+        let task = Task {
+            try await store.prepare(.parakeet, allowNetwork: false) { status in
+                if status.description == "Проверка файлов…" { withUnsafeCurrentTask { $0?.cancel() } }
+            }
+        }
+        do { _ = try await task.value; XCTFail("Expected cancellation") } catch is CancellationError {}
+        XCTAssertTrue(ModelStore.isPresent(.parakeet, root: root))
+        XCTAssertEqual(try String(contentsOf: folder.appendingPathComponent("weights.bin"), encoding: .utf8), "hello\n")
+    }
+    func testModelParentContainerLinkCannotDeleteExternalFiles() async throws {
+        let sandbox = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: sandbox) }
+        let outside = sandbox.appendingPathComponent("outside", isDirectory: true)
+        let sentinel = outside.appendingPathComponent("Models/parakeet/sentinel")
+        try FileManager.default.createDirectory(at: sentinel.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("keep".utf8).write(to: sentinel)
+        let link = sandbox.appendingPathComponent("app-container")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outside)
+        let store = ModelStore(root: link.appendingPathComponent("Models"))
+        do { try await store.remove(.parakeet); XCTFail("Parent link must be rejected") } catch {}
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sentinel.path))
+    }
     private func fixture(_ text: String) throws -> URL {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try Data(text.utf8).write(to: file)
@@ -381,6 +412,40 @@ final class TextTests: XCTestCase {
         XCTAssertEqual(restored.language, .english)
         XCTAssertEqual(restored.inputUID, "chosen-input")
         XCTAssertEqual(restored.replacements, dictionary)
+    }
+    func testDamagedDictionaryEntryDoesNotEraseOtherRules() throws {
+        let suite = UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let rules = [WordReplacement(original: "первый", replacement: "first"), WordReplacement(original: "второй", replacement: "second")]
+        let objects = try JSONSerialization.jsonObject(with: JSONEncoder().encode(rules)) as! [Any]
+        let fields: [String: Any] = ["language": "english", "replacements": [objects[0], ["original": 42], NSNull(), objects[1]]]
+        defaults.set(try JSONSerialization.data(withJSONObject: fields), forKey: VoicePreferences.key)
+        let restored = VoicePreferences.read(defaults)
+        XCTAssertEqual(restored.replacements, rules)
+        XCTAssertEqual(restored.language, .english)
+        restored.save(defaults)
+        XCTAssertEqual(VoicePreferences.read(defaults).replacements, rules)
+    }
+    func testCopyingPreviousResultPreservesBusyOperationStatus() async {
+        let recognizer = FakeRecognizer(holdLoad: true)
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        let controller = VoiceController(defaults: UserDefaults(suiteName: UUID().uuidString)!, clipboard: board,
+            store: FakeStore(), recognizer: recognizer, microphoneAuthorized: { false }, availableDevices: { [] })
+        controller.publish("previous synthetic result")
+        controller.prepare(download: false)
+        for _ in 0..<100 where controller.phase != .loading { try? await Task.sleep(for: .milliseconds(10)) }
+        try? await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(controller.phase, .loading)
+        let status = controller.message
+        controller.copyTranscript()
+        XCTAssertEqual(board.string(forType: .string), "previous synthetic result")
+        XCTAssertEqual(controller.phase, .loading)
+        XCTAssertEqual(controller.message, status)
+        controller.cancel()
+        await recognizer.finishLoad()
+        await waitForOperation(controller)
     }
     func testPreferencesAndDictionaryPersistOnlyInChosenSuite() {
         let name = "ru.demichev.voice.tests." + UUID().uuidString
