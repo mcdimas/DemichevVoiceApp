@@ -53,6 +53,7 @@ final class AudioFileSink: @unchecked Sendable {
     private var file: AVAudioFile?
     private var currentLevel = 0.0
     private var writeFailure: Error?
+    private let inputFormat: AVAudioFormat
     private let maximumFrames: AVAudioFramePosition
     private var writtenFrames: AVAudioFramePosition = 0
     init(url: URL, format: AVAudioFormat, maximumDuration: TimeInterval = 600) throws {
@@ -62,13 +63,14 @@ final class AudioFileSink: @unchecked Sendable {
             throw VoiceError("Некорректный лимит записи.")
         }
         maximumFrames = AVAudioFramePosition(frames.rounded(.down))
+        inputFormat = format
         file = try AVAudioFile(forWriting: url, settings: format.settings,
             commonFormat: format.commonFormat, interleaved: format.isInterleaved)
     }
     func accept(_ buffer: AVAudioPCMBuffer) {
         lock.lock(); defer { lock.unlock() }
         guard let file, writeFailure == nil, writtenFrames < maximumFrames, buffer.frameLength > 0 else { return }
-        let expected = file.processingFormat
+        let expected = inputFormat
         guard buffer.format.sampleRate == expected.sampleRate, buffer.format.channelCount == expected.channelCount,
               buffer.format.commonFormat == expected.commonFormat, buffer.format.isInterleaved == expected.isInterleaved else {
             writeFailure = VoiceError("Формат микрофона изменился во время записи. Начните запись снова."); return

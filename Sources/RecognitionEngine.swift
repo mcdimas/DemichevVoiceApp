@@ -73,8 +73,7 @@ actor RecognitionEngine: SpeechRecognizing {
         occupied = true
         defer { occupied = false }
         try Task.checkCancellation()
-        try Self.validateAudio(file)
-        let samples = try AudioConverter(sampleRate: 16_000).resampleAudioFile(file)
+        let samples = try Self.audioSamples(file)
         try Task.checkCancellation()
         guard samples.count <= 16_000 * 600 else { throw VoiceError("Максимальная длина записи — 10 минут.") }
         guard Self.containsSignal(samples) else { return "" }
@@ -96,6 +95,38 @@ actor RecognitionEngine: SpeechRecognizing {
         guard samples.count >= 4_000 else { return false }
         let energy = samples.reduce(0.0) { $0 + Double($1) * Double($1) } / Double(samples.count)
         return energy.isFinite && energy > 0.00000001
+    }
+
+    nonisolated static func audioSamples(_ url: URL) throws -> [Float] {
+        try validateAudio(url)
+        try Task.checkCancellation()
+        let file = try AVAudioFile(forReading: url, commonFormat: .pcmFormatFloat32, interleaved: false)
+        let format = file.processingFormat
+        if format.channelCount == 1 { return try AudioConverter(sampleRate: 16_000).resampleAudioFile(url) }
+        let capacity = AVAudioFrameCount(max(4_096, format.sampleRate))
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: capacity) else {
+            throw VoiceError("Не удалось подготовить звук для распознавания.")
+        }
+        var mono: [Float] = []
+        mono.reserveCapacity(Int(file.length))
+        while file.framePosition < file.length {
+            try Task.checkCancellation()
+            do { try file.read(into: buffer) }
+            catch {
+                // Packetized formats can overestimate their final decodable
+                // frame, as handled by the pinned converter's file reader.
+                if file.fileFormat.commonFormat == .otherFormat, !mono.isEmpty { break }
+                throw error
+            }
+            guard buffer.frameLength > 0, let channels = buffer.floatChannelData else { break }
+            for frame in 0..<Int(buffer.frameLength) {
+                var value = 0.0
+                for channel in 0..<Int(format.channelCount) { value += Double(channels[channel][frame]) }
+                mono.append(Float(value / Double(format.channelCount)))
+            }
+        }
+        try Task.checkCancellation()
+        return try AudioConverter(sampleRate: 16_000).resample(mono, from: format.sampleRate)
     }
 
     nonisolated static func validateAudio(_ url: URL) throws {

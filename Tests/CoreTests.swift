@@ -2,7 +2,6 @@ import XCTest
 import AppKit
 import AVFoundation
 import SwiftUI
-@preconcurrency import FluidAudio
 @testable import DemichevVoice
 
 final class CatalogTests: XCTestCase {
@@ -666,7 +665,7 @@ final class AudioTests: XCTestCase {
         try sink.close()
         XCTAssertEqual(try AVAudioFile(forReading: file).length, 600 * 44_100)
         try RecognitionEngine.validateAudio(file)
-        let samples = try AudioConverter(sampleRate: 16_000).resampleAudioFile(file)
+        let samples = try RecognitionEngine.audioSamples(file)
         XCTAssertGreaterThanOrEqual(samples.count, 16_000 * 599)
         XCTAssertLessThanOrEqual(samples.count, 16_000 * 600)
         XCTAssertTrue(RecognitionEngine.containsSignal(samples))
@@ -683,7 +682,7 @@ final class AudioTests: XCTestCase {
         sink.accept(buffer)
         XCTAssertGreaterThan(sink.meter(), 0)
         try sink.close()
-        let samples = try AudioConverter(sampleRate: 16_000).resampleAudioFile(file)
+        let samples = try RecognitionEngine.audioSamples(file)
         XCTAssertEqual(samples.count, 16_000)
         XCTAssertTrue(RecognitionEngine.containsSignal(samples))
     }
