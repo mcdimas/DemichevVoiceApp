@@ -1,6 +1,7 @@
 import XCTest
 import AppKit
 import AVFoundation
+import AudioToolbox
 import SwiftUI
 @testable import DemichevVoice
 
@@ -687,8 +688,10 @@ final class AudioTests: XCTestCase {
         XCTAssertTrue(RecognitionEngine.containsSignal(samples))
     }
     func testCaptureAndRecognitionRejectUnsupportedFormatsBeforeWriting() throws {
+        let layout = try XCTUnwrap(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | 33))
+        let multichannel = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channelLayout: layout))
         for format in [try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 384_000, channels: 1)),
-                       try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 33))] {
+                       multichannel] {
             let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
             defer { try? FileManager.default.removeItem(at: file) }
             XCTAssertThrowsError(try AudioConstraints.validateFormat(format))
