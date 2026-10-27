@@ -277,6 +277,9 @@ final class TextTests: XCTestCase {
                      WordReplacement(original: "ss", replacement: "pair")]
         XCTAssertEqual(ReplacementPipeline.apply("STRASSE, Straße; STRASSEN. ß!", rules: rules), "street, street; STRASSEN. pair!")
         XCTAssertEqual(ReplacementPipeline.apply("ß", rules: [.init(original: "s", replacement: "wrong")]), "ß")
+        for invisible in ["\u{200D}", "\u{034F}", "\u{FE0F}"] {
+            XCTAssertEqual(ReplacementPipeline.apply("plain text", rules: [.init(original: invisible, replacement: "wrong")]), "plain text")
+        }
     }
     func testLargeDictionaryProcessesLongSyntheticDictation() {
         for (source, destination) in [("term", "word"), ("термин", "слово")] {

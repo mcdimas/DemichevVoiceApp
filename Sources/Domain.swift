@@ -78,7 +78,7 @@ enum ReplacementPipeline {
             if startsWord {
                 for rule in sorted {
                     if let range = input.range(of: rule.original, options: [.caseInsensitive, .anchored], range: cursor..<input.endIndex),
-                       boundary(range.upperBound) {
+                       range.upperBound > cursor, boundary(range.upperBound) {
                         match = (rule, range.upperBound); break
                     }
                 }
