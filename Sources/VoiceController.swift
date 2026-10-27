@@ -2,6 +2,7 @@ import AppKit
 import AVFoundation
 import Observation
 import KeyboardShortcuts
+import Combine
 
 extension KeyboardShortcuts.Name {
     static let recordVoice = Self("demichev.record", initial: .init(.space, modifiers: [.control, .option]))
@@ -21,6 +22,8 @@ enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, rec
     private let microphoneAuthorized: () -> Bool
     private let availableDevices: () -> [InputDevice]
     private let cleanupOldRecordings: () throws -> Void
+    private let workspaceNotifications: NotificationCenter
+    private var systemSubscriptions = Set<AnyCancellable>()
     private var operation: Task<Void, Never>?
     private var meter: Task<Void, Never>?
     private var started = false
@@ -59,12 +62,14 @@ enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, rec
          capture: any AudioRecording = AudioCapture(),
          microphoneAuthorized: @escaping () -> Bool = { AVCaptureDevice.authorizationStatus(for: .audio) == .authorized },
          availableDevices: @escaping () -> [InputDevice] = { InputDevices.available() },
-         cleanupOldRecordings: @escaping () throws -> Void = { try RecordingFiles.purgeExpired() }) {
+         cleanupOldRecordings: @escaping () throws -> Void = { try RecordingFiles.purgeExpired() },
+         workspaceNotifications: NotificationCenter = NSWorkspace.shared.notificationCenter) {
         self.defaults = defaults; self.clipboard = clipboard
         self.modelRoot = modelRoot; self.store = store ?? ModelStore(root: modelRoot)
         self.recognizer = recognizer; self.capture = capture
         self.microphoneAuthorized = microphoneAuthorized; self.availableDevices = availableDevices
         self.cleanupOldRecordings = cleanupOldRecordings
+        self.workspaceNotifications = workspaceNotifications
         preferences = VoicePreferences.read(defaults)
     }
 
@@ -73,6 +78,11 @@ enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, rec
         started = true
         retryRecordingCleanup()
         refreshPermissions()
+        for name in [NSWorkspace.willSleepNotification, NSWorkspace.didWakeNotification, NSWorkspace.sessionDidResignActiveNotification] {
+            workspaceNotifications.publisher(for: name).sink { [weak self] _ in
+                Task { @MainActor [weak self] in self?.interruptCaptureForSystemTransition() }
+            }.store(in: &systemSubscriptions)
+        }
         if enableShortcuts {
         shortcutsInstalled = true
         KeyboardShortcuts.onKeyDown(for: .recordVoice) { [weak self] in self?.shortcutDown() }
@@ -83,6 +93,14 @@ enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, rec
         if defaults.string(forKey: Self.pendingPreparationKey) == preferences.model.rawValue {
             message = "Предыдущая подготовка этой модели не завершилась. Выберите другую модель или повторите подготовку в настройках."
         } else if installedModels.contains(preferences.model) { prepare(download: false) }
+    }
+
+    private func interruptCaptureForSystemTransition() {
+        shortcutHeld = false
+        if phase == .recording {
+            cancel()
+            message = "Запись отменена при смене состояния Mac. Начните новую запись."
+        }
     }
 
     func retryRecordingCleanup() {

@@ -286,6 +286,30 @@ final class TextTests: XCTestCase {
 }
 
 @MainActor final class ControllerTests: XCTestCase {
+    func testWorkspaceTransitionsStopCaptureAndResetHeldShortcut() async {
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        let notifications = NotificationCenter()
+        let capture = FakeCapture()
+        let controller = VoiceController(defaults: UserDefaults(suiteName: UUID().uuidString)!, clipboard: board,
+            modelRoot: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),
+            store: FakeStore(), recognizer: FakeRecognizer(), capture: capture, microphoneAuthorized: { true },
+            availableDevices: { [] }, cleanupOldRecordings: {}, workspaceNotifications: notifications)
+        controller.prepare(download: false)
+        await waitForOperation(controller)
+        controller.start(enableShortcuts: false)
+        controller.publish("keep")
+        for name in [NSWorkspace.willSleepNotification, NSWorkspace.didWakeNotification, NSWorkspace.sessionDidResignActiveNotification] {
+            controller.shortcutDown()
+            XCTAssertEqual(controller.phase, .recording)
+            notifications.post(name: name, object: nil)
+            for _ in 0..<100 where controller.phase == .recording { try? await Task.sleep(for: .milliseconds(10)) }
+            XCTAssertEqual(controller.phase, .ready)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: capture.file.path))
+            XCTAssertEqual(board.string(forType: .string), "keep")
+            // Deliberately omit key-up, as it can be lost across system sleep.
+        }
+    }
     func testOfflineDiagnosticReturnsFailureAndRemovesItsOwnPreferences() async throws {
         let sandbox = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: sandbox) }
