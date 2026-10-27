@@ -53,13 +53,18 @@ enum ReplacementPipeline {
         }
         while cursor < input.endIndex {
             let startsWord = cursor == input.startIndex || boundary(input.index(before: cursor))
-            let match = startsWord ? sorted.first { rule in
-                guard let end = input.index(cursor, offsetBy: rule.original.count, limitedBy: input.endIndex) else { return false }
-                return boundary(end) && input[cursor..<end].compare(rule.original, options: .caseInsensitive) == .orderedSame
-            } : nil
+            var match: (rule: WordReplacement, end: String.Index)?
+            if startsWord {
+                for rule in sorted {
+                    if let range = input.range(of: rule.original, options: [.caseInsensitive, .anchored], range: cursor..<input.endIndex),
+                       boundary(range.upperBound) {
+                        match = (rule, range.upperBound); break
+                    }
+                }
+            }
             if let match {
-                output += match.replacement
-                cursor = input.index(cursor, offsetBy: match.original.count)
+                output += match.rule.replacement
+                cursor = match.end
             } else {
                 output.append(input[cursor]); cursor = input.index(after: cursor)
             }
