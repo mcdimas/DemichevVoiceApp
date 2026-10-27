@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-APP="$PWD/build/Debug/Build/Products/Debug/Demichev Voice.app/Contents/MacOS/DemichevVoice"
+APP="${DEMICHEV_CHECK_APP:-$PWD/build/Debug/Build/Products/Debug/Demichev Voice.app/Contents/MacOS/DemichevVoice}"
 test -f "$APP"
 test -f "${1:?Supply a local synthetic audio fixture}"
 # Network is denied only for the child process, never for the whole Mac.

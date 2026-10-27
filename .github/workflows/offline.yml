@@ -8,18 +8,24 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-      - name: Build app for model verification
+      - name: Build Release installer for model verification
         run: |
           test "$(uname -m)" = arm64
           mkdir -p build
-          set -o pipefail
-          xcodebuild -project DemichevVoice.xcodeproj -scheme DemichevVoice \
-            -destination 'platform=macOS,arch=arm64' -derivedDataPath build/Debug \
-            -onlyUsePackageVersionsFromResolvedFile CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= build \
-            2>&1 | tee build/integration-build.log
+          bash scripts/package.sh
+      - name: Mount the exact installer read-only
+        run: |
+          images=(build/installers/*.dmg)
+          test "${#images[@]}" -eq 1
+          MOUNT="$RUNNER_TEMP/demichev-verification"
+          mkdir -p "$MOUNT"
+          hdiutil attach -readonly -nobrowse -mountpoint "$MOUNT" "${images[0]}"
+          codesign --verify --strict --deep "$MOUNT/Demichev Voice.app"
+          printf 'DEMICHEV_CHECK_APP=%s\n' "$MOUNT/Demichev Voice.app/Contents/MacOS/DemichevVoice" >> "$GITHUB_ENV"
       - name: Download and verify pinned models (opt-in integration only)
         run: |
-          "build/Debug/Build/Products/Debug/Demichev Voice.app/Contents/MacOS/DemichevVoice" --install-models
+          set -o pipefail
+          "$DEMICHEV_CHECK_APP" --install-models 2>&1 | tee build/model-install.log
       - name: Recognize synthetic speech, silence and cancellation with network denied
         env:
           DEMICHEV_EXPECT_WORDS: local,speech,computer
@@ -27,6 +33,20 @@ jobs:
           say -v Samantha -r 140 -o build/synthetic.aiff 'This is a local speech test on my computer. The meeting starts tomorrow morning.'
           set -o pipefail
           bash scripts/offline-check.sh "$PWD/build/synthetic.aiff" 2>&1 | tee build/offline.log
+      - name: Save installer verified with real local models
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Demichev-Voice-verified-macOS-arm64
+          path: |
+            build/installers/*.dmg
+            build/installers/*.sha256
+          if-no-files-found: error
+      - name: Unmount verification installer
+        if: always()
+        run: |
+          if mount | grep -Fq " on $RUNNER_TEMP/demichev-verification ("; then
+            hdiutil detach "$RUNNER_TEMP/demichev-verification"
+          fi
       - name: Save verification diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
