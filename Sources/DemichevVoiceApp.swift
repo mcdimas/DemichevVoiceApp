@@ -67,7 +67,7 @@ final class VoiceAppDelegate: NSObject, NSApplicationDelegate {
             FileHandle.standardError.write(Data("Supply --check-audio /absolute/path or --install-models separately.\n".utf8))
             exit(2)
         case .checkAudio(let audio):
-            Task { await OfflineCheck.run(audio: audio) }
+            Task { let status = await OfflineCheck.run(audio: audio); exit(status) }
         case .installModels:
             Task {
                 do {
@@ -84,15 +84,20 @@ final class VoiceAppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @MainActor enum OfflineCheck {
-    static func run(audio: URL) async {
+    static func run(audio: URL, modelRoot: URL = AppStorage.models,
+                    suiteName: String = "ru.demichev.voice.check." + UUID().uuidString) async -> Int32 {
         do {
             try RecognitionEngine.validateAudio(audio)
-            let store = ModelStore(); let engine = RecognitionEngine()
-            let suite = "ru.demichev.voice.check." + UUID().uuidString
+            let store = ModelStore(root: modelRoot); let engine = RecognitionEngine()
+            let suite = suiteName
             let defaults = UserDefaults(suiteName: suite)!
             let board = NSPasteboard.withUniqueName()
-            defer { defaults.removePersistentDomain(forName: suite); board.releaseGlobally() }
-            let controller = VoiceController(defaults: defaults, clipboard: board, store: store, recognizer: engine,
+            defer {
+                defaults.removePersistentDomain(forName: suite); board.releaseGlobally()
+                let cleaned = (defaults.persistentDomain(forName: suite) ?? [:]).isEmpty
+                print(cleaned ? "DIAGNOSTIC_CLEANUP_OK" : "DIAGNOSTIC_CLEANUP_FAILED")
+            }
+            let controller = VoiceController(defaults: defaults, clipboard: board, modelRoot: modelRoot, store: store, recognizer: engine,
                 microphoneAuthorized: { false }, availableDevices: { [] })
             for model in SpeechModel.allCases {
                 // Exercise the same verification -> memory loading -> ready
@@ -108,7 +113,7 @@ final class VoiceAppDelegate: NSObject, NSApplicationDelegate {
                 }
                 guard controller.phase == .ready else { throw VoiceError("\(model.title): \(controller.error)") }
                 print("MODEL_READY \(model.rawValue) elapsed_seconds=\(Int(Date().timeIntervalSince(started)))")
-                let path = ModelStore.folder(model)
+                let path = ModelStore.folder(model, root: modelRoot)
                 let result = try await engine.recognize(audio, language: .automatic)
                 guard !result.isEmpty else { throw VoiceError("Нет результата для \(model.title).") }
                 if let expected = ProcessInfo.processInfo.environment["DEMICHEV_EXPECT_WORDS"] {
@@ -132,8 +137,8 @@ final class VoiceAppDelegate: NSObject, NSApplicationDelegate {
                 print("OFFLINE_OK \(model.rawValue)")
             }
             try await engine.unload()
-            exit(0)
-        } catch { FileHandle.standardError.write(Data("OFFLINE_FAILED: \(error.localizedDescription)\n".utf8)); exit(1) }
+            return 0
+        } catch { FileHandle.standardError.write(Data("OFFLINE_FAILED: \(error.localizedDescription)\n".utf8)); return 1 }
     }
     private static func silentAudio() throws -> URL {
         let format = AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)!

@@ -252,6 +252,24 @@ final class TextTests: XCTestCase {
 }
 
 @MainActor final class ControllerTests: XCTestCase {
+    func testOfflineDiagnosticReturnsFailureAndRemovesItsOwnPreferences() async throws {
+        let sandbox = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: sandbox) }
+        try FileManager.default.createDirectory(at: sandbox, withIntermediateDirectories: true)
+        let suite = "ru.demichev.voice.tests.diagnostic." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let audio = sandbox.appendingPathComponent("synthetic.caf")
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 16_000))
+        buffer.frameLength = 16_000
+        buffer.floatChannelData![0].initialize(repeating: 0, count: 16_000)
+        do { let writer = try AVAudioFile(forWriting: audio, settings: format.settings); try writer.write(from: buffer) }
+        let status = await OfflineCheck.run(audio: audio, modelRoot: sandbox.appendingPathComponent("MissingModels"), suiteName: suite)
+        XCTAssertEqual(status, 1)
+        XCTAssertTrue((defaults.persistentDomain(forName: suite) ?? [:]).isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: audio.path))
+    }
     func testInterruptedPreparationLeavesModelChoiceAvailableAfterRestart() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let suite = UUID().uuidString
