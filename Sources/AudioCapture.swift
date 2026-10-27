@@ -8,6 +8,19 @@ struct InputDevice: Identifiable, Equatable {
     let name: String
 }
 
+enum AudioConstraints {
+    static func validateFormat(_ format: AVAudioFormat) throws {
+        guard format.sampleRate.isFinite, format.sampleRate > 0, format.sampleRate <= 192_000,
+              format.channelCount > 0, format.channelCount <= 32 else {
+            throw VoiceError("Неподдерживаемый формат звука: нужны 1–32 канала и частота не выше 192 кГц.")
+        }
+        switch format.commonFormat {
+        case .pcmFormatFloat32, .pcmFormatFloat64, .pcmFormatInt16, .pcmFormatInt32: break
+        default: throw VoiceError("Неподдерживаемый PCM-формат звука.")
+        }
+    }
+}
+
 enum InputDevices {
     private static func property(_ device: AudioDeviceID, selector: AudioObjectPropertySelector) -> String? {
         var address = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
@@ -43,27 +56,48 @@ final class AudioFileSink: @unchecked Sendable {
     private let maximumFrames: AVAudioFramePosition
     private var writtenFrames: AVAudioFramePosition = 0
     init(url: URL, format: AVAudioFormat, maximumDuration: TimeInterval = 600) throws {
+        try AudioConstraints.validateFormat(format)
         let frames = format.sampleRate * maximumDuration
         guard frames.isFinite, frames >= 1, frames < Double(AVAudioFramePosition.max) else {
             throw VoiceError("Некорректный лимит записи.")
         }
         maximumFrames = AVAudioFramePosition(frames.rounded(.down))
-        file = try AVAudioFile(forWriting: url, settings: format.settings)
+        file = try AVAudioFile(forWriting: url, settings: format.settings,
+            commonFormat: format.commonFormat, interleaved: format.isInterleaved)
     }
     func accept(_ buffer: AVAudioPCMBuffer) {
         lock.lock(); defer { lock.unlock() }
         guard let file, writeFailure == nil, writtenFrames < maximumFrames, buffer.frameLength > 0 else { return }
+        let expected = file.processingFormat
+        guard buffer.format.sampleRate == expected.sampleRate, buffer.format.channelCount == expected.channelCount,
+              buffer.format.commonFormat == expected.commonFormat, buffer.format.isInterleaved == expected.isInterleaved else {
+            writeFailure = VoiceError("Формат микрофона изменился во время записи. Начните запись снова."); return
+        }
         let originalLength = buffer.frameLength
         buffer.frameLength = AVAudioFrameCount(min(AVAudioFramePosition(originalLength), maximumFrames - writtenFrames))
         defer { buffer.frameLength = originalLength }
         do { try file.write(from: buffer); writtenFrames += AVAudioFramePosition(buffer.frameLength) }
         catch { writeFailure = error; return }
-        guard let channels = buffer.floatChannelData, buffer.frameLength > 0 else { return }
-        var energy = 0.0
-        for channel in 0..<Int(buffer.format.channelCount) {
-            for frame in 0..<Int(buffer.frameLength) { energy += Double(channels[channel][frame]) * Double(channels[channel][frame]) }
+        func energy<T>(_ type: T.Type, normalize: (T) -> Double) -> Double {
+            var result = 0.0
+            for plane in UnsafeAudioBufferListPointer(buffer.audioBufferList) {
+                guard let data = plane.mData else { continue }
+                let count = Int(buffer.frameLength) * Int(plane.mNumberChannels)
+                for sample in UnsafeBufferPointer(start: data.assumingMemoryBound(to: T.self), count: count) {
+                    let value = normalize(sample); result += value * value
+                }
+            }
+            return result
         }
-        currentLevel = AudioCapture.level(energy: energy / Double(buffer.frameLength) / Double(max(1, buffer.format.channelCount)))
+        let sum: Double
+        switch buffer.format.commonFormat {
+        case .pcmFormatFloat32: sum = energy(Float.self) { Double($0) }
+        case .pcmFormatFloat64: sum = energy(Double.self) { $0 }
+        case .pcmFormatInt16: sum = energy(Int16.self) { Double($0) / 32_768 }
+        case .pcmFormatInt32: sum = energy(Int32.self) { Double($0) / 2_147_483_648 }
+        default: sum = 0
+        }
+        currentLevel = AudioCapture.level(energy: sum / Double(buffer.frameLength) / Double(buffer.format.channelCount))
     }
     func meter() -> Double { lock.lock(); defer { lock.unlock() }; return currentLevel }
     func failure() -> Error? { lock.lock(); defer { lock.unlock() }; return writeFailure }
@@ -138,7 +172,7 @@ enum RecordingFiles {
             guard status == noErr else { throw VoiceError("Не удалось открыть микрофон (\(status)).") }
         }
         let format = node.outputFormat(forBus: 0)
-        guard format.channelCount > 0, format.sampleRate > 0 else { throw VoiceError("Микрофон не передаёт звук.") }
+        try AudioConstraints.validateFormat(format)
         try RecordingFiles.prepareDirectory()
         let file = AppStorage.audio.appendingPathComponent(UUID().uuidString).appendingPathExtension("caf")
         let sink: AudioFileSink

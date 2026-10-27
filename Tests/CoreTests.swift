@@ -620,6 +620,58 @@ final class TextTests: XCTestCase {
 }
 
 final class AudioTests: XCTestCase {
+    func testCaptureAndRecognitionRejectUnsupportedFormatsBeforeWriting() throws {
+        for format in [try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 384_000, channels: 1)),
+                       try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 33))] {
+            let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+            defer { try? FileManager.default.removeItem(at: file) }
+            XCTAssertThrowsError(try AudioConstraints.validateFormat(format))
+            XCTAssertThrowsError(try AudioFileSink(url: file, format: format))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        }
+    }
+    func testPCMRecordingFormatsAndStereoMeter() throws {
+        for common in [AVAudioCommonFormat.pcmFormatFloat32, .pcmFormatFloat64, .pcmFormatInt16, .pcmFormatInt32] {
+            for interleaved in [false, true] {
+                let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+                defer { try? FileManager.default.removeItem(at: file) }
+                let format = try XCTUnwrap(AVAudioFormat(commonFormat: common, sampleRate: 16_000, channels: 2, interleaved: interleaved))
+                let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 128))
+                buffer.frameLength = 128
+                for plane in UnsafeMutableAudioBufferListPointer(buffer.mutableAudioBufferList) {
+                    let data = try XCTUnwrap(plane.mData)
+                    let count = 128 * Int(plane.mNumberChannels)
+                    switch common {
+                    case .pcmFormatFloat32: data.assumingMemoryBound(to: Float.self).initialize(repeating: 0.1, count: count)
+                    case .pcmFormatFloat64: data.assumingMemoryBound(to: Double.self).initialize(repeating: 0.1, count: count)
+                    case .pcmFormatInt16: data.assumingMemoryBound(to: Int16.self).initialize(repeating: 3_277, count: count)
+                    case .pcmFormatInt32: data.assumingMemoryBound(to: Int32.self).initialize(repeating: 214_748_365, count: count)
+                    default: XCTFail("Unsupported test format")
+                    }
+                }
+                let sink = try AudioFileSink(url: file, format: format)
+                sink.accept(buffer)
+                XCTAssertNil(sink.failure(), "\(common) interleaved=\(interleaved)")
+                XCTAssertEqual(sink.meter(), AudioCapture.level(energy: 0.01), accuracy: 0.001)
+                try sink.close()
+                XCTAssertEqual(try AVAudioFile(forReading: file).length, 128)
+                XCTAssertNoThrow(try RecognitionEngine.validateAudio(file))
+            }
+        }
+    }
+    func testChangedBufferFormatBecomesRecoverableFailure() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let expected = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+        let changed = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: changed, frameCapacity: 128))
+        buffer.frameLength = 128
+        let sink = try AudioFileSink(url: file, format: expected)
+        sink.accept(buffer)
+        XCTAssertNotNil(sink.failure())
+        XCTAssertThrowsError(try sink.close())
+        XCTAssertEqual(try AVAudioFile(forReading: file).length, 0)
+    }
     func testRecordingFrameLimitTrimsFinalBufferAndIgnoresLateBuffers() throws {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
         defer { try? FileManager.default.removeItem(at: file) }

@@ -100,9 +100,8 @@ actor RecognitionEngine: SpeechRecognizing {
 
     nonisolated static func validateAudio(_ url: URL) throws {
         let file = try AVAudioFile(forReading: url)
-        guard file.processingFormat.sampleRate.isFinite, file.processingFormat.sampleRate > 0, file.processingFormat.sampleRate <= 192_000,
-              file.length >= 0, Double(file.length) / file.processingFormat.sampleRate <= 600,
-              file.processingFormat.channelCount > 0, file.processingFormat.channelCount <= 32 else {
+        try AudioConstraints.validateFormat(file.processingFormat)
+        guard file.length >= 0, Double(file.length) / file.processingFormat.sampleRate <= 600 else {
             throw VoiceError("Неподдерживаемая запись или длительность больше 10 минут.")
         }
     }
