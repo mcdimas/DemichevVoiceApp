@@ -252,6 +252,38 @@ final class TextTests: XCTestCase {
 }
 
 @MainActor final class ControllerTests: XCTestCase {
+    func testInterruptedPreparationLeavesModelChoiceAvailableAfterRestart() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let suite = UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { try? FileManager.default.removeItem(at: root); defaults.removePersistentDomain(forName: suite) }
+        let folder = ModelStore.folder(.parakeet, root: root)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("parakeet".utf8).write(to: folder.appendingPathComponent(".installed"))
+        let held = FakeRecognizer(holdLoad: true)
+        let interrupted = VoiceController(defaults: defaults, modelRoot: root, store: FakeStore(), recognizer: held,
+            microphoneAuthorized: { false }, availableDevices: { [] }, cleanupOldRecordings: {})
+        interrupted.prepare(download: false)
+        for _ in 0..<100 where interrupted.phase != .loading { try? await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(interrupted.phase, .loading)
+        XCTAssertEqual(defaults.string(forKey: VoiceController.pendingPreparationKey), "parakeet")
+        let next = VoiceController(defaults: defaults, modelRoot: root, store: FakeStore(), recognizer: FakeRecognizer(),
+            microphoneAuthorized: { false }, availableDevices: { [] }, cleanupOldRecordings: {})
+        next.start(enableShortcuts: false)
+        XCTAssertEqual(next.phase, .idle)
+        XCTAssertFalse(next.busy)
+        XCTAssertTrue(next.message.contains("не завершилась"))
+        XCTAssertTrue(next.installedModels.contains(.parakeet))
+        try snapshot(next, tab: "settings", name: "settings-recovery")
+        interrupted.cancel()
+        await held.finishLoad()
+        await waitForOperation(interrupted)
+        XCTAssertNotNil(defaults.string(forKey: VoiceController.pendingPreparationKey))
+        next.prepare(download: false)
+        await waitForOperation(next)
+        XCTAssertEqual(next.phase, .ready)
+        XCTAssertNil(defaults.string(forKey: VoiceController.pendingPreparationKey))
+    }
     func testCleanupWarningSurvivesPreparationAndCanBeRetried() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

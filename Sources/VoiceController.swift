@@ -11,6 +11,7 @@ extension KeyboardShortcuts.Name {
 enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, recording, recognizing, cancelling }
 
 @MainActor @Observable final class VoiceController {
+    static let pendingPreparationKey = "independent.modelPreparation.pending.v1"
     private let defaults: UserDefaults
     private let clipboard: NSPasteboard
     private let store: any ModelPreparing
@@ -79,7 +80,9 @@ enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, rec
         KeyboardShortcuts.onKeyDown(for: .cancelVoice) { [weak self] in self?.cancel() }
         cancelShortcut(enabled: false)
         }
-        if installedModels.contains(preferences.model) { prepare(download: false) }
+        if defaults.string(forKey: Self.pendingPreparationKey) == preferences.model.rawValue {
+            message = "Предыдущая подготовка этой модели не завершилась. Выберите другую модель или повторите подготовку в настройках."
+        } else if installedModels.contains(preferences.model) { prepare(download: false) }
     }
 
     func retryRecordingCleanup() {
@@ -147,6 +150,7 @@ enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, rec
                 }
                 try Task.checkCancellation()
                 phase = .loading; loadingStartedAt = Date()
+                defaults.set(model.rawValue, forKey: Self.pendingPreparationKey)
                 message = "Загрузка модели в память…"
                 refreshModels()
                 try await recognizer.load(model, directory: directory) { [weak self] status in
@@ -156,6 +160,7 @@ enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, rec
                     }
                 }
                 try Task.checkCancellation()
+                defaults.removeObject(forKey: Self.pendingPreparationKey)
                 ready = true; message = "Модель готова. Можно диктовать."
             } catch { try? await recognizer.unload(); report(error) }
         }
@@ -171,6 +176,7 @@ enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, rec
             do {
                 try await recognizer.unload()
                 try await store.remove(model)
+                if defaults.string(forKey: Self.pendingPreparationKey) == model.rawValue { defaults.removeObject(forKey: Self.pendingPreparationKey) }
                 message = "Файлы выбранной модели удалены."
             } catch { report(error) }
         }
