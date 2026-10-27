@@ -727,7 +727,7 @@ final class AudioTests: XCTestCase {
             for active in 0..<count {
                 let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
                 defer { try? FileManager.default.removeItem(at: file) }
-                let layout = try XCTUnwrap(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | AVAudioChannelLayoutTag(count)))
+                let layout = try XCTUnwrap(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | UInt32(count)))
                 let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channelLayout: layout))
                 let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 16_000))
                 buffer.frameLength = 16_000
