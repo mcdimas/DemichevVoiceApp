@@ -80,7 +80,7 @@ final class AudioFileSink: @unchecked Sendable {
         catch { writeFailure = error; return }
         func energy<T>(_ type: T.Type, normalize: (T) -> Double) -> Double {
             var result = 0.0
-            for plane in UnsafeAudioBufferListPointer(buffer.audioBufferList) {
+            for plane in UnsafeMutableAudioBufferListPointer(buffer.mutableAudioBufferList) {
                 guard let data = plane.mData else { continue }
                 let count = Int(buffer.frameLength) * Int(plane.mNumberChannels)
                 for sample in UnsafeBufferPointer(start: data.assumingMemoryBound(to: T.self), count: count) {
