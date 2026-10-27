@@ -143,6 +143,7 @@ actor ModelStore: ModelPreparing {
     }
 
     func prepare(_ model: SpeechModel, allowNetwork: Bool, publish: @escaping @Sendable (ModelProgress) -> Void) async throws -> URL {
+        try Task.checkCancellation()
         guard !working else { throw VoiceError("Подготовка предыдущей модели ещё не завершена.") }
         working = true
         defer { working = false }
@@ -154,7 +155,9 @@ actor ModelStore: ModelPreparing {
         try catalog.validate(for: model)
         let marker = directory.appendingPathComponent(".installed")
         try StorageSafety.checkContainer(marker, root: root)
-        if fm.fileExists(atPath: marker.path) { try fm.removeItem(at: marker) }
+        func invalidateMarker() throws {
+            if fm.fileExists(atPath: marker.path) { try fm.removeItem(at: marker) }
+        }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 60
         configuration.timeoutIntervalForResource = 3_600
@@ -166,7 +169,16 @@ actor ModelStore: ModelPreparing {
             let destination = try file.destination(under: directory)
             try StorageSafety.checkContainer(destination, root: root)
             publish(.init(completed: completed, total: catalog.size, description: "Проверка файлов…"))
-            if try file.verify(destination) { completed += file.byteCount; continue }
+            let verified: Bool
+            do { verified = try file.verify(destination) }
+            catch {
+                if !(error is CancellationError) && !Task.isCancelled { try? invalidateMarker() }
+                throw error
+            }
+            if verified { completed += file.byteCount; continue }
+            // Cancellation of an otherwise healthy verification must not make
+            // already installed files disappear from offline preparation.
+            try invalidateMarker()
             guard allowNetwork else { throw VoiceError("Модель не установлена или файл повреждён. Нажмите «Скачать модель».") }
             guard file.sourceURL.scheme == "https", file.sourceURL.host == "huggingface.co",
                   file.sourceURL.path.range(of: "/resolve/[a-f0-9]{40}/", options: .regularExpression) != nil else { throw VoiceError("Источник модели не закреплён.") }
