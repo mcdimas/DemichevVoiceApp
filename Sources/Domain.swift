@@ -78,8 +78,12 @@ enum ReplacementPipeline {
             if startsWord {
                 for rule in sorted {
                     if let range = input.range(of: rule.original, options: [.caseInsensitive, .anchored], range: cursor..<input.endIndex),
-                       range.upperBound > cursor, boundary(range.upperBound) {
-                        match = (rule, range.upperBound); break
+                       range.lowerBound == cursor, range.upperBound > cursor {
+                        // Foundation searches can end inside a composed Swift
+                        // Character. Never replace only part of a grapheme.
+                        var end = cursor
+                        while end < range.upperBound { end = input.index(after: end) }
+                        if end == range.upperBound, boundary(end) { match = (rule, end); break }
                     }
                 }
             }

@@ -264,6 +264,13 @@ final class CatalogTests: XCTestCase {
 }
 
 final class TextTests: XCTestCase {
+    func testDictionaryCannotSplitComposedCharacters() {
+        let rules = [WordReplacement(original: "👨", replacement: "person"),
+                     WordReplacement(original: "1", replacement: "one"),
+                     WordReplacement(original: "e", replacement: "letter")]
+        XCTAssertEqual(ReplacementPipeline.apply("👨‍👩‍👧‍👦 👨 1️⃣ 1 e\u{301} e", rules: rules),
+                       "👨‍👩‍👧‍👦 person 1️⃣ one e\u{301} letter")
+    }
     @MainActor func testDictionaryWorkAllowsMainActorCancellation() async throws {
         let rules = (0..<200).map { WordReplacement(original: "термин\($0)", replacement: "слово\($0)") }
         let input = String(repeating: "термин199 термин42 термин0, ", count: 10_000)
