@@ -222,7 +222,8 @@ enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, rec
     func copyTranscript() {
         guard !transcript.isEmpty else { return }
         clipboard.clearContents(); clipboardCopied = clipboard.setString(transcript, forType: .string)
-        message = clipboardCopied ? "Текст скопирован. Используйте Cmd+V." : "Не удалось записать в буфер. Скопируйте текст из результата."
+        if !busy { message = clipboardCopied ? "Текст скопирован. Используйте Cmd+V." : "Не удалось записать в буфер. Скопируйте текст из результата." }
+        else if !clipboardCopied { error = "Не удалось записать в буфер. Скопируйте текст из результата." }
     }
 
     func cancel() {

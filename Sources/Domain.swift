@@ -76,6 +76,10 @@ struct VoicePreferences: Codable {
     var replacements: [WordReplacement] = []
 
     private enum CodingKeys: String, CodingKey { case model, language, recordingMode, inputUID, replacements }
+    private struct StoredReplacement: Decodable {
+        let value: WordReplacement?
+        init(from decoder: Decoder) throws { value = try? WordReplacement(from: decoder) }
+    }
     init() {}
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -85,7 +89,7 @@ struct VoicePreferences: Codable {
         language = (try? values.decode(SpeechLanguage.self, forKey: .language)) ?? .russian
         recordingMode = (try? values.decode(RecordingMode.self, forKey: .recordingMode)) ?? .hold
         inputUID = (try? values.decode(String.self, forKey: .inputUID)) ?? ""
-        replacements = (try? values.decode([WordReplacement].self, forKey: .replacements)) ?? []
+        replacements = (try? values.decode([StoredReplacement].self, forKey: .replacements))?.compactMap(\.value) ?? []
         var seen = Set<UUID>()
         replacements = Array(replacements.filter {
             !$0.original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
