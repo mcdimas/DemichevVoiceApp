@@ -252,6 +252,27 @@ final class TextTests: XCTestCase {
 }
 
 @MainActor final class ControllerTests: XCTestCase {
+    func testCleanupWarningSurvivesPreparationAndCanBeRetried() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = ModelStore.folder(.parakeet, root: root)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("parakeet".utf8).write(to: folder.appendingPathComponent(".installed"))
+        var attempts = 0
+        let controller = VoiceController(defaults: UserDefaults(suiteName: UUID().uuidString)!, modelRoot: root,
+            store: FakeStore(), recognizer: FakeRecognizer(), microphoneAuthorized: { false }, availableDevices: { [] },
+            cleanupOldRecordings: { attempts += 1; if attempts == 1 { throw VoiceError("Synthetic cleanup failure") } })
+        controller.start(enableShortcuts: false)
+        await waitForOperation(controller)
+        XCTAssertEqual(controller.phase, .ready)
+        XCTAssertTrue(controller.storageWarning.contains("Synthetic cleanup failure"))
+        XCTAssertTrue(controller.error.isEmpty)
+        XCTAssertFalse(controller.shortcutsActive)
+        try snapshot(controller, tab: "settings", name: "settings-cleanup-warning")
+        controller.retryRecordingCleanup()
+        XCTAssertTrue(controller.storageWarning.isEmpty)
+        XCTAssertEqual(attempts, 2)
+    }
     func testAllTabsRenderWithSyntheticDataWithoutPermissions() throws {
         let board = NSPasteboard.withUniqueName()
         defer { board.releaseGlobally() }

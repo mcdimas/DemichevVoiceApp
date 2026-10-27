@@ -32,6 +32,14 @@ struct VoiceWindow: View {
                 Text("Настройки").tag("settings")
                 Text("Словарь").tag("dictionary")
             }.pickerStyle(.segmented).padding(.horizontal, 26).padding(.vertical, 18)
+            if !controller.storageWarning.isEmpty {
+                HStack(alignment: .top) {
+                    Label(controller.storageWarning, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange).textSelection(.enabled)
+                    Spacer()
+                    Button("Повторить очистку") { controller.retryRecordingCleanup() }
+                }.font(.callout).padding(.horizontal, 28).padding(.bottom, 16)
+            }
             if !controller.error.isEmpty {
                 Label(controller.error, systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.red).font(.callout).textSelection(.enabled)

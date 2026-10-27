@@ -19,9 +19,11 @@ enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, rec
     private let modelRoot: URL
     private let microphoneAuthorized: () -> Bool
     private let availableDevices: () -> [InputDevice]
+    private let cleanupOldRecordings: () throws -> Void
     private var operation: Task<Void, Never>?
     private var meter: Task<Void, Never>?
     private var started = false
+    private var shortcutsInstalled = false
     private var operationID = UUID()
     private var shortcutHeld = false
     private var recordingUsesHoldShortcut = false
@@ -34,6 +36,7 @@ enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, rec
     private(set) var clipboardCopied = false
     private(set) var message = "Выберите модель для локального распознавания."
     private(set) var error = ""
+    private(set) var storageWarning = ""
     private(set) var progress = 0.0
     private(set) var modelBytesCompleted: Int64 = 0
     private(set) var modelBytesTotal: Int64 = 0
@@ -47,31 +50,41 @@ enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, rec
     var canRecord: Bool { phase == .ready && microphoneAllowed }
     var busy: Bool { [.preparing, .loading, .removing, .recording, .recognizing, .cancelling].contains(phase) }
     var canCancel: Bool { [.preparing, .loading, .recording, .recognizing].contains(phase) }
-    var shortcutsActive: Bool { started }
-    var shortcutDescription: String { started ? KeyboardShortcuts.getShortcut(for: .recordVoice)?.description ?? "заданное сочетание клавиш" : "Control + Option + Пробел" }
+    var shortcutsActive: Bool { shortcutsInstalled }
+    var shortcutDescription: String { shortcutsInstalled ? KeyboardShortcuts.getShortcut(for: .recordVoice)?.description ?? "заданное сочетание клавиш" : "Control + Option + Пробел" }
 
     init(defaults: UserDefaults = .standard, clipboard: NSPasteboard = .general, modelRoot: URL = AppStorage.models,
          store: (any ModelPreparing)? = nil, recognizer: any SpeechRecognizing = RecognitionEngine(),
          capture: any AudioRecording = AudioCapture(),
          microphoneAuthorized: @escaping () -> Bool = { AVCaptureDevice.authorizationStatus(for: .audio) == .authorized },
-         availableDevices: @escaping () -> [InputDevice] = { InputDevices.available() }) {
+         availableDevices: @escaping () -> [InputDevice] = { InputDevices.available() },
+         cleanupOldRecordings: @escaping () throws -> Void = { try RecordingFiles.purgeExpired() }) {
         self.defaults = defaults; self.clipboard = clipboard
         self.modelRoot = modelRoot; self.store = store ?? ModelStore(root: modelRoot)
         self.recognizer = recognizer; self.capture = capture
         self.microphoneAuthorized = microphoneAuthorized; self.availableDevices = availableDevices
+        self.cleanupOldRecordings = cleanupOldRecordings
         preferences = VoicePreferences.read(defaults)
     }
 
-    func start() {
+    func start(enableShortcuts: Bool = true) {
         guard !started else { return }
         started = true
-        do { try RecordingFiles.purgeExpired() } catch { self.error = error.localizedDescription }
+        retryRecordingCleanup()
         refreshPermissions()
+        if enableShortcuts {
+        shortcutsInstalled = true
         KeyboardShortcuts.onKeyDown(for: .recordVoice) { [weak self] in self?.shortcutDown() }
         KeyboardShortcuts.onKeyUp(for: .recordVoice) { [weak self] in self?.shortcutUp() }
         KeyboardShortcuts.onKeyDown(for: .cancelVoice) { [weak self] in self?.cancel() }
         cancelShortcut(enabled: false)
+        }
         if installedModels.contains(preferences.model) { prepare(download: false) }
+    }
+
+    func retryRecordingCleanup() {
+        do { try cleanupOldRecordings(); storageWarning = "" }
+        catch { storageWarning = "Не удалось очистить старые временные записи: " + error.localizedDescription }
     }
 
     func refreshPermissions() {
@@ -241,7 +254,7 @@ enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, rec
         cancelShortcut(enabled: false)
     }
     private func cancelShortcut(enabled: Bool) {
-        guard started else { return }
+        guard shortcutsInstalled else { return }
         if enabled { KeyboardShortcuts.enable(.cancelVoice) } else { KeyboardShortcuts.disable(.cancelVoice) }
     }
     private func report(_ failure: Error) {
