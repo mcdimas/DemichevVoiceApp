@@ -43,15 +43,36 @@ struct WordReplacement: Codable, Identifiable, Equatable, Sendable {
 
 enum ReplacementPipeline {
     static func apply(_ input: String, rules: [WordReplacement]) -> String {
+        evaluate(input, rules: rules, cancelled: { false })
+    }
+
+    static func process(_ input: String, rules: [WordReplacement]) async throws -> String {
+        try Task.checkCancellation()
+        let worker = Task.detached(priority: .userInitiated) {
+            try Task.checkCancellation()
+            let result = evaluate(input, rules: rules, cancelled: { Task.isCancelled })
+            try Task.checkCancellation()
+            return result.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let result = try await withTaskCancellationHandler {
+            try await worker.value
+        } onCancel: { worker.cancel() }
+        try Task.checkCancellation()
+        return result
+    }
+
+    private static func evaluate(_ input: String, rules: [WordReplacement], cancelled: () -> Bool) -> String {
         // Match all rules against the input once; replacements cannot cascade.
         let sorted = rules.filter { $0.enabled && !$0.original.isEmpty }
             .sorted { $0.original.count > $1.original.count }
+        guard !sorted.isEmpty else { return input }
         var cursor = input.startIndex
         var output = ""
         func boundary(_ index: String.Index) -> Bool {
             index == input.endIndex || (!input[index].isLetter && !input[index].isNumber && input[index] != "_")
         }
         while cursor < input.endIndex {
+            if cancelled() { return "" }
             let startsWord = cursor == input.startIndex || boundary(input.index(before: cursor))
             var match: (rule: WordReplacement, end: String.Index)?
             if startsWord {

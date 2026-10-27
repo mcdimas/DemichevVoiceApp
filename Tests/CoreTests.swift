@@ -260,6 +260,14 @@ final class CatalogTests: XCTestCase {
 }
 
 final class TextTests: XCTestCase {
+    func testAsyncDictionaryProcessingPreservesUnicodeAndHonorsCancellation() async throws {
+        let rules = [WordReplacement(original: "Straße", replacement: "street")]
+        let result = try await ReplacementPipeline.process(" STRASSE ", rules: rules)
+        XCTAssertEqual(result, "street")
+        let cancelled = Task { try await ReplacementPipeline.process(String(repeating: "STRASSE ", count: 10_000), rules: rules) }
+        cancelled.cancel()
+        do { _ = try await cancelled.value; XCTFail("Cancelled text must not be returned") } catch is CancellationError {}
+    }
     func testCaseInsensitiveDictionaryUsesActualUnicodeMatchLength() {
         let rules = [WordReplacement(original: "Straße", replacement: "street"),
                      WordReplacement(original: "ss", replacement: "pair")]
@@ -267,12 +275,14 @@ final class TextTests: XCTestCase {
         XCTAssertEqual(ReplacementPipeline.apply("ß", rules: [.init(original: "s", replacement: "wrong")]), "ß")
     }
     func testLargeDictionaryProcessesLongSyntheticDictation() {
-        let rules = (0..<200).map { WordReplacement(original: "term\($0)", replacement: "word\($0)") }
-        let input = Array(repeating: "term199 term42 term0", count: 1_000).joined(separator: ", ")
-        let expected = Array(repeating: "word199 word42 word0", count: 1_000).joined(separator: ", ")
-        let started = ContinuousClock.now
-        XCTAssertEqual(ReplacementPipeline.apply(input, rules: rules), expected)
-        print("DICTIONARY_SYNTHETIC_DURATION \(started.duration(to: .now))")
+        for (source, destination) in [("term", "word"), ("термин", "слово")] {
+            let rules = (0..<200).map { WordReplacement(original: "\(source)\($0)", replacement: "\(destination)\($0)") }
+            let input = Array(repeating: "\(source)199 \(source)42 \(source)0", count: 1_000).joined(separator: ", ")
+            let expected = Array(repeating: "\(destination)199 \(destination)42 \(destination)0", count: 1_000).joined(separator: ", ")
+            let started = ContinuousClock.now
+            XCTAssertEqual(ReplacementPipeline.apply(input, rules: rules), expected)
+            print("DICTIONARY_SYNTHETIC_DURATION \(source) \(started.duration(to: .now))")
+        }
     }
     func testDictionaryPrefersWholeLongestPhraseAndCannotCascade() {
         let rules = [WordReplacement(original: "дом", replacement: "office"),

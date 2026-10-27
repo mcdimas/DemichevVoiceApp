@@ -241,7 +241,10 @@ enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, rec
             do {
                 let result = try await recognizer.recognize(file, language: language)
                 try Task.checkCancellation()
-                if publish(result) {
+                message = "Подготовка текста…"
+                let processed = try await ReplacementPipeline.process(result, rules: preferences.replacements)
+                try Task.checkCancellation()
+                if storeResult(processed) {
                     message = clipboardCopied ? "Текст скопирован. Используйте Cmd+V." : "Текст готов. Скопируйте его из результата."
                 } else { message = "Речь не обнаружена." }
             } catch { report(error) }
@@ -251,6 +254,9 @@ enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, rec
     @discardableResult func publish(_ text: String) -> Bool {
         let result = ReplacementPipeline.apply(text, rules: preferences.replacements)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        return storeResult(result)
+    }
+    @discardableResult private func storeResult(_ result: String) -> Bool {
         guard !result.isEmpty else { return false }
         transcript = result
         clipboard.clearContents(); clipboardCopied = clipboard.setString(result, forType: .string)
