@@ -107,9 +107,25 @@ private struct ModelHTTPError: LocalizedError {
 
 private final class TransferObserver: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     let publish: @Sendable (Int64) -> Void
-    init(publish: @escaping @Sendable (Int64) -> Void) { self.publish = publish }
+    private let maximumBytes: Int64
+    private let lock = NSLock()
+    private var oversized = false
+    init(maximumBytes: Int64, publish: @escaping @Sendable (Int64) -> Void) {
+        self.maximumBytes = maximumBytes; self.publish = publish
+    }
+    var sizeExceeded: Bool { lock.lock(); defer { lock.unlock() }; return oversized }
+    @discardableResult func record(_ bytes: Int64) -> Bool {
+        lock.lock()
+        if bytes > maximumBytes { oversized = true }
+        let accepted = !oversized
+        lock.unlock()
+        if accepted { publish(bytes) }
+        return accepted
+    }
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {}
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) { publish(totalBytesWritten) }
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        if !record(totalBytesWritten) { downloadTask.cancel() }
+    }
 }
 
 protocol ModelPreparing: Sendable {
@@ -188,7 +204,7 @@ actor ModelStore: ModelPreparing {
             let progress: @Sendable (Int64) -> Void = { bytes in publish(.init(completed: offset + max(0, min(bytes, file.byteCount)), total: catalog.size, description: "Загрузка модели…")) }
             var request = URLRequest(url: file.sourceURL)
             request.timeoutInterval = 60
-            let temporary = try await download(request, session: session, progress: progress) { attempt in
+            let temporary = try await download(request, session: session, expectedBytes: file.byteCount, progress: progress) { attempt in
                 publish(.init(completed: offset, total: catalog.size, description: "Загрузка прервалась. Повтор \(attempt) из 3…"))
             }
             defer { try? fm.removeItem(at: temporary) }
@@ -214,14 +230,19 @@ actor ModelStore: ModelPreparing {
         return directory
     }
 
-    private func download(_ request: URLRequest, session: URLSession, progress: @escaping @Sendable (Int64) -> Void,
+    private func download(_ request: URLRequest, session: URLSession, expectedBytes: Int64, progress: @escaping @Sendable (Int64) -> Void,
                           retrying: @Sendable (Int) -> Void) async throws -> URL {
         for attempt in 1...3 {
             try Task.checkCancellation()
+            let observer = TransferObserver(maximumBytes: expectedBytes, publish: progress)
             do {
                 let result: (URL, URLResponse)
-                if let transfer { result = try await transfer(request, progress) }
-                else { result = try await session.download(for: request, delegate: TransferObserver(publish: progress)) }
+                if let transfer { result = try await transfer(request, { _ = observer.record($0) }) }
+                else { result = try await session.download(for: request, delegate: observer) }
+                if observer.sizeExceeded {
+                    try? FileManager.default.removeItem(at: result.0)
+                    throw VoiceError("Скачивание остановлено: файл превышает размер из проверенного каталога модели.")
+                }
                 guard let response = result.1 as? HTTPURLResponse, response.statusCode == 200 else {
                     try? FileManager.default.removeItem(at: result.0)
                     throw ModelHTTPError(status: (result.1 as? HTTPURLResponse)?.statusCode ?? 0)
@@ -229,6 +250,7 @@ actor ModelStore: ModelPreparing {
                 return result.0
             } catch {
                 try Task.checkCancellation()
+                if observer.sizeExceeded { throw VoiceError("Скачивание остановлено: файл превышает размер из проверенного каталога модели.") }
                 let transientCodes: [URLError.Code] = [.timedOut, .networkConnectionLost, .cannotConnectToHost,
                     .cannotFindHost, .dnsLookupFailed, .notConnectedToInternet]
                 let retryable = (error as? ModelHTTPError)?.retryable ?? (error as? URLError).map { transientCodes.contains($0.code) } ?? false

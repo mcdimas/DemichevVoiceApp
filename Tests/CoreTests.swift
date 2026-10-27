@@ -64,6 +64,27 @@ final class CatalogTests: XCTestCase {
         XCTAssertEqual(requests, 3)
         XCTAssertFalse(FileManager.default.fileExists(atPath: ModelStore.folder(.parakeet, root: root).appendingPathComponent(".installed").path))
     }
+    func testOversizedDownloadCannotReplaceFilesOrRetry() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = ModelStore.folder(.parakeet, root: root)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let original = folder.appendingPathComponent("weights.bin")
+        try Data("keep!\n".utf8).write(to: original)
+        let transfer = FakeTransfer(text: "hello\nextra bytes")
+        let store = ModelStore(root: root, catalog: smallCatalog(), transfer: { request, progress in
+            try await transfer.fetch(request, progress: progress)
+        }, retryDelay: { _ in })
+        do { _ = try await store.prepare(.parakeet, allowNetwork: true) { _ in }; XCTFail("Expected size limit") }
+        catch { XCTAssertTrue(error.localizedDescription.contains("превышает размер")) }
+        XCTAssertEqual(try String(contentsOf: original, encoding: .utf8), "keep!\n")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent(".installed").path))
+        let requests = await transfer.requests
+        XCTAssertEqual(requests, 1)
+        let lastTemporary = await transfer.lastTemporary
+        let temporary = try XCTUnwrap(lastTemporary)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: temporary.path))
+    }
     func testHTTPFailureIsNotReportedAsHashCorruption() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
