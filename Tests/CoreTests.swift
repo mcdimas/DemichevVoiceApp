@@ -2,6 +2,7 @@ import XCTest
 import AppKit
 import AVFoundation
 import SwiftUI
+@preconcurrency import FluidAudio
 @testable import DemichevVoice
 
 final class CatalogTests: XCTestCase {
@@ -620,6 +621,39 @@ final class TextTests: XCTestCase {
 }
 
 final class AudioTests: XCTestCase {
+    func testFullLengthCaptureResamplesWithinRecognitionLimit() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 44_100))
+        buffer.frameLength = 44_100
+        buffer.floatChannelData![0].initialize(repeating: 0.1, count: 44_100)
+        let sink = try AudioFileSink(url: file, format: format)
+        for _ in 0..<601 { sink.accept(buffer) }
+        try sink.close()
+        XCTAssertEqual(try AVAudioFile(forReading: file).length, 600 * 44_100)
+        try RecognitionEngine.validateAudio(file)
+        let samples = try AudioConverter(sampleRate: 16_000).resampleAudioFile(file)
+        XCTAssertGreaterThanOrEqual(samples.count, 16_000 * 599)
+        XCTAssertLessThanOrEqual(samples.count, 16_000 * 600)
+        XCTAssertTrue(RecognitionEngine.containsSignal(samples))
+    }
+    func testStereoRightChannelSurvivesCaptureAndMonoConversion() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 2))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 16_000))
+        buffer.frameLength = 16_000
+        buffer.floatChannelData![0].initialize(repeating: 0, count: 16_000)
+        buffer.floatChannelData![1].initialize(repeating: 0.2, count: 16_000)
+        let sink = try AudioFileSink(url: file, format: format)
+        sink.accept(buffer)
+        XCTAssertGreaterThan(sink.meter(), 0)
+        try sink.close()
+        let samples = try AudioConverter(sampleRate: 16_000).resampleAudioFile(file)
+        XCTAssertEqual(samples.count, 16_000)
+        XCTAssertTrue(RecognitionEngine.containsSignal(samples))
+    }
     func testCaptureAndRecognitionRejectUnsupportedFormatsBeforeWriting() throws {
         for format in [try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 384_000, channels: 1)),
                        try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 33))] {
