@@ -185,7 +185,7 @@ enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, rec
                 if !self.preferences.inputUID.isEmpty, !self.availableDevices().contains(where: { $0.id == self.preferences.inputUID }) {
                     self.cancel(); self.error = "Микрофон отключён. Выберите доступный вход."; return
                 }
-                if self.elapsed >= 600 { self.endRecording(); return }
+                if self.capture.limitReached || self.elapsed >= 600 { self.endRecording(); return }
             }
         }
     }

@@ -35,18 +35,29 @@ enum InputDevices {
     }
 }
 
-private final class AudioFileSink: @unchecked Sendable {
+final class AudioFileSink: @unchecked Sendable {
     private let lock = NSLock()
     private var file: AVAudioFile?
     private var currentLevel = 0.0
     private var writeFailure: Error?
-    init(url: URL, format: AVAudioFormat) throws {
+    private let maximumFrames: AVAudioFramePosition
+    private var writtenFrames: AVAudioFramePosition = 0
+    init(url: URL, format: AVAudioFormat, maximumDuration: TimeInterval = 600) throws {
+        let frames = format.sampleRate * maximumDuration
+        guard frames.isFinite, frames >= 1, frames < Double(AVAudioFramePosition.max) else {
+            throw VoiceError("Некорректный лимит записи.")
+        }
+        maximumFrames = AVAudioFramePosition(frames.rounded(.down))
         file = try AVAudioFile(forWriting: url, settings: format.settings)
     }
     func accept(_ buffer: AVAudioPCMBuffer) {
         lock.lock(); defer { lock.unlock() }
-        guard let file, writeFailure == nil else { return }
-        do { try file.write(from: buffer) } catch { writeFailure = error }
+        guard let file, writeFailure == nil, writtenFrames < maximumFrames, buffer.frameLength > 0 else { return }
+        let originalLength = buffer.frameLength
+        buffer.frameLength = AVAudioFrameCount(min(AVAudioFramePosition(originalLength), maximumFrames - writtenFrames))
+        defer { buffer.frameLength = originalLength }
+        do { try file.write(from: buffer); writtenFrames += AVAudioFramePosition(buffer.frameLength) }
+        catch { writeFailure = error; return }
         guard let channels = buffer.floatChannelData, buffer.frameLength > 0 else { return }
         var energy = 0.0
         for channel in 0..<Int(buffer.format.channelCount) {
@@ -56,6 +67,7 @@ private final class AudioFileSink: @unchecked Sendable {
     }
     func meter() -> Double { lock.lock(); defer { lock.unlock() }; return currentLevel }
     func failure() -> Error? { lock.lock(); defer { lock.unlock() }; return writeFailure }
+    func reachedLimit() -> Bool { lock.lock(); defer { lock.unlock() }; return writtenFrames >= maximumFrames }
     func close() throws {
         lock.lock(); defer { lock.unlock() }
         file = nil
@@ -66,10 +78,13 @@ private final class AudioFileSink: @unchecked Sendable {
 @MainActor protocol AudioRecording: AnyObject {
     var amplitude: Double { get }
     var failure: Error? { get }
+    var limitReached: Bool { get }
     func begin(inputUID: String) throws
     func finish() throws -> URL?
     func discard()
 }
+
+extension AudioRecording { var limitReached: Bool { false } }
 
 enum RecordingFiles {
     static func prepareDirectory(_ root: URL = AppStorage.audio) throws {
@@ -96,6 +111,7 @@ enum RecordingFiles {
     private var sink: AudioFileSink?
     private var url: URL?
     var amplitude: Double { sink?.meter() ?? 0 }
+    var limitReached: Bool { sink?.reachedLimit() ?? false }
     var failure: Error? {
         if let error = sink?.failure() { return error }
         if let engine, !engine.isRunning { return VoiceError("Аудиоустройство изменилось или запись прервана. Начните запись снова.") }

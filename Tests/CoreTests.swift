@@ -523,6 +523,39 @@ final class TextTests: XCTestCase {
 }
 
 final class AudioTests: XCTestCase {
+    func testRecordingFrameLimitTrimsFinalBufferAndIgnoresLateBuffers() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 128))
+        buffer.frameLength = 128
+        buffer.floatChannelData![0].initialize(repeating: 0.1, count: 128)
+        let sink = try AudioFileSink(url: file, format: format, maximumDuration: 0.01)
+        sink.accept(buffer)
+        XCTAssertFalse(sink.reachedLimit())
+        sink.accept(buffer)
+        XCTAssertTrue(sink.reachedLimit())
+        XCTAssertEqual(buffer.frameLength, 128)
+        sink.accept(buffer)
+        try sink.close()
+        let recording = try AVAudioFile(forReading: file)
+        XCTAssertEqual(recording.length, 160)
+        XCTAssertNoThrow(try RecognitionEngine.validateAudio(file))
+    }
+    func testRecordingBoundaryMatchesStrictTenMinuteValidation() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        defer { try? FileManager.default.removeItem(at: file) }
+        // A low sample rate exercises the real 600-second bound with a small file.
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 100, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 32_768))
+        buffer.frameLength = 32_768
+        buffer.floatChannelData![0].initialize(repeating: 0.1, count: 32_768)
+        let sink = try AudioFileSink(url: file, format: format)
+        sink.accept(buffer); sink.accept(buffer); sink.accept(buffer)
+        try sink.close()
+        XCTAssertEqual(try AVAudioFile(forReading: file).length, 60_000)
+        XCTAssertNoThrow(try RecognitionEngine.validateAudio(file))
+    }
     func testDiagnosticArgumentsRejectMissingPathAndConflictingActions() {
         XCTAssertEqual(LaunchCommand.parse(["app"]), .normal)
         XCTAssertEqual(LaunchCommand.parse(["app", "--install-models"]), .installModels)
