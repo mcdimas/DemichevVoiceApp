@@ -97,6 +97,10 @@ final class VoiceAppDelegate: NSObject, NSApplicationDelegate {
                 let cleaned = (defaults.persistentDomain(forName: suite) ?? [:]).isEmpty
                 print(cleaned ? "DIAGNOSTIC_CLEANUP_OK" : "DIAGNOSTIC_CLEANUP_FAILED")
             }
+            let diagnostics = FileManager.default.temporaryDirectory.appendingPathComponent("ru.demichev.voice.check." + UUID().uuidString, isDirectory: true)
+            try RecordingFiles.prepareDirectory(diagnostics)
+            defer { try? FileManager.default.removeItem(at: diagnostics) }
+            let stereo = try stereoAudio(from: audio, under: diagnostics)
             let controller = VoiceController(defaults: defaults, clipboard: board, modelRoot: modelRoot, store: store, recognizer: engine,
                 microphoneAuthorized: { false }, availableDevices: { [] })
             for model in SpeechModel.allCases {
@@ -119,7 +123,13 @@ final class VoiceAppDelegate: NSObject, NSApplicationDelegate {
                 if let expected = ProcessInfo.processInfo.environment["DEMICHEV_EXPECT_WORDS"] {
                     guard expected.split(separator: ",").allSatisfy({ result.lowercased().contains($0.lowercased()) }) else { throw VoiceError("Не распознаны контрольные слова для \(model.title).") }
                 }
-                let silence = try silentAudio()
+                let stereoText = try await engine.recognize(stereo, language: .automatic)
+                guard !stereoText.isEmpty else { throw VoiceError("Правый канал не распознан для \(model.title).") }
+                if let expected = ProcessInfo.processInfo.environment["DEMICHEV_EXPECT_WORDS"] {
+                    guard expected.split(separator: ",").allSatisfy({ stereoText.lowercased().contains($0.lowercased()) }) else { throw VoiceError("Не распознаны контрольные слова правого канала для \(model.title).") }
+                }
+                print("STEREO_OK \(model.rawValue)")
+                let silence = try silentAudio(under: diagnostics)
                 defer { try? FileManager.default.removeItem(at: silence) }
                 let quiet = try await engine.recognize(silence, language: .automatic)
                 guard quiet.isEmpty else { throw VoiceError("Тишина дала текст.") }
@@ -140,13 +150,28 @@ final class VoiceAppDelegate: NSObject, NSApplicationDelegate {
             return 0
         } catch { FileHandle.standardError.write(Data("OFFLINE_FAILED: \(error.localizedDescription)\n".utf8)); return 1 }
     }
-    private static func silentAudio() throws -> URL {
+    private static func stereoAudio(from source: URL, under root: URL) throws -> URL {
+        let samples = try RecognitionEngine.audioSamples(source)
+        guard !samples.isEmpty else { throw VoiceError("Пустой пример для стереопроверки.") }
+        let format = AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 2)!
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count))!
+        buffer.frameLength = AVAudioFrameCount(samples.count)
+        buffer.floatChannelData![0].initialize(repeating: 0, count: samples.count)
+        samples.withUnsafeBufferPointer { buffer.floatChannelData![1].initialize(from: $0.baseAddress!, count: $0.count) }
+        let file = root.appendingPathComponent(UUID().uuidString + ".caf")
+        let writer = try AudioFileSink(url: file, format: format)
+        writer.accept(buffer); try writer.close()
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        return file
+    }
+    private static func silentAudio(under root: URL) throws -> URL {
         let format = AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)!
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 16_000)!
         buffer.frameLength = 16_000
         buffer.floatChannelData![0].initialize(repeating: 0, count: 16_000)
-        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        let file = root.appendingPathComponent(UUID().uuidString + ".caf")
         do { let writer = try AVAudioFile(forWriting: file, settings: format.settings); try writer.write(from: buffer) }
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
         return file
     }
 }

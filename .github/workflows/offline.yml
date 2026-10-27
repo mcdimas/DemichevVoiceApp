@@ -34,6 +34,7 @@ jobs:
           set -o pipefail
           bash scripts/offline-check.sh "$PWD/build/synthetic.aiff" 2>&1 | tee build/offline.log
           grep -Fxq DIAGNOSTIC_CLEANUP_OK build/offline.log
+          for model in parakeet whisper; do grep -Fxq "STEREO_OK $model" build/offline.log; done
       - name: Save installer verified with real local models
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
