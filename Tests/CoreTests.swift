@@ -21,6 +21,9 @@ final class CatalogTests: XCTestCase {
         try FileManager.default.setAttributes([.modificationDate: now], ofItemAtPath: recent.path)
         let link = folder.appendingPathComponent(".download-" + UUID().uuidString)
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: sentinel)
+        let dangling = folder.appendingPathComponent(".download-" + UUID().uuidString)
+        let missing = folder.appendingPathComponent("missing-target")
+        try FileManager.default.createSymbolicLink(at: dangling, withDestinationURL: missing)
         let original = smallCatalog().files[0]
         let catalog = ModelCatalog(name: "parakeet", files: [original,
             .init(relativePath: listedWeight.lastPathComponent, sourceURL: original.sourceURL,
@@ -29,6 +32,7 @@ final class CatalogTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: old.path))
         for file in [recent, unrelated, sentinel, listedWeight, link] { XCTAssertTrue(FileManager.default.fileExists(atPath: file.path)) }
         XCTAssertEqual(try String(contentsOf: sentinel, encoding: .utf8), "keep")
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: dangling.path), missing.path)
     }
     private func smallCatalog() -> ModelCatalog {
         ModelCatalog(name: "parakeet", files: [.init(relativePath: "weights.bin",

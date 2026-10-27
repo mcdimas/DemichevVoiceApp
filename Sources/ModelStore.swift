@@ -160,6 +160,7 @@ actor ModelStore: ModelPreparing {
                 let name = file.lastPathComponent
                 guard !destinations.contains(file.standardizedFileURL), name.hasPrefix(".download-"),
                       UUID(uuidString: String(name.dropFirst(10))) != nil else { continue }
+                if try file.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true { continue }
                 let values = try file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .creationDateKey, .contentModificationDateKey])
                 guard values.isRegularFile == true, values.isSymbolicLink != true,
                       let created = values.creationDate, let modified = values.contentModificationDate,
