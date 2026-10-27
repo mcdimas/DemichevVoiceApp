@@ -264,6 +264,15 @@ final class TextTests: XCTestCase {
         let rules = [WordReplacement(original: "Straße", replacement: "street"),
                      WordReplacement(original: "ss", replacement: "pair")]
         XCTAssertEqual(ReplacementPipeline.apply("STRASSE, Straße; STRASSEN. ß!", rules: rules), "street, street; STRASSEN. pair!")
+        XCTAssertEqual(ReplacementPipeline.apply("ß", rules: [.init(original: "s", replacement: "wrong")]), "ß")
+    }
+    func testLargeDictionaryProcessesLongSyntheticDictation() {
+        let rules = (0..<200).map { WordReplacement(original: "term\($0)", replacement: "word\($0)") }
+        let input = Array(repeating: "term199 term42 term0", count: 1_000).joined(separator: ", ")
+        let expected = Array(repeating: "word199 word42 word0", count: 1_000).joined(separator: ", ")
+        let started = ContinuousClock.now
+        XCTAssertEqual(ReplacementPipeline.apply(input, rules: rules), expected)
+        print("DICTIONARY_SYNTHETIC_DURATION \(started.duration(to: .now))")
     }
     func testDictionaryPrefersWholeLongestPhraseAndCannotCascade() {
         let rules = [WordReplacement(original: "дом", replacement: "office"),
