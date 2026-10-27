@@ -26,7 +26,7 @@ enum LaunchCommand: Equatable {
             if underTest { EmptyView() } else {
             VoiceWindow(controller: controller)
                 .preferredColorScheme(.light)
-                .task { if !underTest && LaunchCommand.parse(ProcessInfo.processInfo.arguments) == .normal { controller.start() } }
+                .task { if !underTest && LaunchCommand.parse(ProcessInfo.processInfo.arguments) == .normal { delegate.controller = controller; controller.start() } }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in if !underTest { controller.refreshPermissions() } }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in controller.cancel() }
             }
@@ -58,7 +58,9 @@ struct MenuContent: View {
     }
 }
 
-final class VoiceAppDelegate: NSObject, NSApplicationDelegate {
+@MainActor final class VoiceAppDelegate: NSObject, NSApplicationDelegate {
+    weak var controller: VoiceController?
+    func applicationWillTerminate(_ notification: Notification) { controller?.cancel() }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationDidFinishLaunching(_ notification: Notification) {
         switch LaunchCommand.parse(ProcessInfo.processInfo.arguments) {

@@ -25,6 +25,7 @@ enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, rec
     private let workspaceNotifications: NotificationCenter
     private var systemSubscriptions = Set<AnyCancellable>()
     private var operation: Task<Void, Never>?
+    private var pendingRecordingFile: URL?
     private var meter: Task<Void, Never>?
     private var started = false
     private var shortcutsInstalled = false
@@ -234,10 +235,11 @@ enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, rec
         do { guard let url = try capture.finish() else { cancel(); return }; file = url }
         catch { cancel(); self.error = error.localizedDescription; return }
         phase = .recognizing; message = "Распознавание на вашем Mac…"
+        pendingRecordingFile = file
         let language = preferences.language
         operation = Task { [weak self] in
             guard let self else { try? FileManager.default.removeItem(at: file); return }
-            defer { try? FileManager.default.removeItem(at: file); finishOperation() }
+            defer { try? FileManager.default.removeItem(at: file); pendingRecordingFile = nil; finishOperation() }
             do {
                 let result = try await recognizer.recognize(file, language: language)
                 try Task.checkCancellation()
@@ -274,6 +276,7 @@ enum VoicePhase: Equatable { case idle, preparing, loading, removing, ready, rec
         guard phase != .idle && phase != .ready else { return }
         recordingUsesHoldShortcut = false; meter?.cancel(); meter = nil; level = 0
         capture.discard()
+        if let pendingRecordingFile { try? FileManager.default.removeItem(at: pendingRecordingFile) }
         if let operation { phase = .cancelling; message = "Завершаем отмену…"; operation.cancel() }
         else { phase = ready ? .ready : .idle; message = "Запись отменена."; cancelShortcut(enabled: false) }
     }

@@ -494,6 +494,7 @@ final class TextTests: XCTestCase {
         for _ in 0..<100 { if await recognizer.recognizing { break }; try? await Task.sleep(for: .milliseconds(1)) }
         controller.cancel()
         XCTAssertEqual(controller.phase, .cancelling)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: capture.file.path))
         XCTAssertFalse(controller.canRecord)
         await waitForOperation(controller)
         XCTAssertEqual(controller.phase, .ready)
@@ -513,6 +514,18 @@ final class TextTests: XCTestCase {
         capture.failBegin = false; controller.beginRecording()
         XCTAssertEqual(controller.phase, .recording)
         XCTAssertTrue(controller.error.isEmpty)
+    }
+    func testApplicationDelegateCancelsRecordingWithoutAWindowObserver() async {
+        let capture = FakeCapture()
+        let (controller, board) = await session(capture: capture)
+        defer { board.releaseGlobally() }
+        let delegate = VoiceAppDelegate()
+        delegate.controller = controller
+        controller.beginRecording()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: capture.file.path))
+        delegate.applicationWillTerminate(Notification(name: NSApplication.willTerminateNotification))
+        XCTAssertEqual(controller.phase, .ready)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: capture.file.path))
     }
     func testFailedLoadUnloadsEngineAndCannotRecord() async {
         let recognizer = FakeRecognizer(failLoad: true)
