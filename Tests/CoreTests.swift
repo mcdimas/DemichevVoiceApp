@@ -722,21 +722,25 @@ final class AudioTests: XCTestCase {
         XCTAssertLessThanOrEqual(samples.count, 16_000 * 600)
         XCTAssertTrue(RecognitionEngine.containsSignal(samples))
     }
-    func testStereoRightChannelSurvivesCaptureAndMonoConversion() throws {
-        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
-        defer { try? FileManager.default.removeItem(at: file) }
-        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 2))
-        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 16_000))
-        buffer.frameLength = 16_000
-        buffer.floatChannelData![0].initialize(repeating: 0, count: 16_000)
-        buffer.floatChannelData![1].initialize(repeating: 0.2, count: 16_000)
-        let sink = try AudioFileSink(url: file, format: format)
-        sink.accept(buffer)
-        XCTAssertGreaterThan(sink.meter(), 0)
-        try sink.close()
-        let samples = try RecognitionEngine.audioSamples(file)
-        XCTAssertEqual(samples.count, 16_000)
-        XCTAssertTrue(RecognitionEngine.containsSignal(samples))
+    func testEveryInputChannelSurvivesCaptureAndMonoConversion() throws {
+        for count in [2, 4] {
+            for active in 0..<count {
+                let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+                defer { try? FileManager.default.removeItem(at: file) }
+                let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: AVAudioChannelCount(count)))
+                let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 16_000))
+                buffer.frameLength = 16_000
+                for channel in 0..<count { buffer.floatChannelData![channel].initialize(repeating: channel == active ? 0.2 : 0, count: 16_000) }
+                let sink = try AudioFileSink(url: file, format: format)
+                sink.accept(buffer)
+                XCTAssertGreaterThan(sink.meter(), 0)
+                try sink.close()
+                let samples = try RecognitionEngine.audioSamples(file)
+                XCTAssertEqual(samples.count, 16_000)
+                XCTAssertTrue(RecognitionEngine.containsSignal(samples))
+                XCTAssertEqual(try XCTUnwrap(samples.first), 0.2 / Float(count), accuracy: 0.00001)
+            }
+        }
     }
     func testCaptureAndRecognitionRejectUnsupportedFormatsBeforeWriting() throws {
         let layout = try XCTUnwrap(AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | 33))
