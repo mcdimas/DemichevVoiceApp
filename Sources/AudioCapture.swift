@@ -73,13 +73,13 @@ private final class AudioFileSink: @unchecked Sendable {
 
 enum RecordingFiles {
     static func prepareDirectory(_ root: URL = AppStorage.audio) throws {
-        try StorageSafety.check(root, under: root)
+        try StorageSafety.checkContainer(root, root: root)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         // createDirectory's attributes do not update a pre-existing directory.
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)
     }
     static func purgeExpired(under root: URL = AppStorage.audio, now: Date = Date()) throws {
-        try StorageSafety.check(root, under: root)
+        try StorageSafety.checkContainer(root, root: root)
         guard FileManager.default.fileExists(atPath: root.path) else { return }
         for url in try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .contentModificationDateKey]) {
             guard url.pathExtension == "caf", UUID(uuidString: url.deletingPathExtension().lastPathComponent) != nil,

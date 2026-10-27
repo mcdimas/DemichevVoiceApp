@@ -2,6 +2,12 @@ import Foundation
 import CryptoKit
 
 enum StorageSafety {
+    static func checkContainer(_ target: URL, root: URL) throws {
+        // Models/Recordings live inside an app-owned container. Check that
+        // container too, without rejecting system aliases such as /var.
+        try check(root, under: root.deletingLastPathComponent())
+        try check(target, under: root)
+    }
     static func rejectLink(_ url: URL) throws {
         if (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
             throw VoiceError("Каталог приложения содержит символическую ссылку. Выберите обычный каталог.")
@@ -127,7 +133,7 @@ actor ModelStore: ModelPreparing {
     nonisolated static func folder(_ model: SpeechModel, root: URL = AppStorage.models) -> URL { root.appendingPathComponent(model.rawValue, isDirectory: true) }
     nonisolated static func isPresent(_ model: SpeechModel, root: URL = AppStorage.models) -> Bool {
         let marker = folder(model, root: root).appendingPathComponent(".installed")
-        guard (try? StorageSafety.check(marker, under: root)) != nil,
+        guard (try? StorageSafety.checkContainer(marker, root: root)) != nil,
               let properties = try? marker.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
               properties.isRegularFile == true, (properties.fileSize ?? 0) <= 128,
               let value = try? String(contentsOf: marker, encoding: .utf8),
@@ -142,12 +148,12 @@ actor ModelStore: ModelPreparing {
         defer { working = false }
         let fm = FileManager.default
         let directory = Self.folder(model, root: root)
-        try StorageSafety.check(directory, under: root)
+        try StorageSafety.checkContainer(directory, root: root)
         try fm.createDirectory(at: directory, withIntermediateDirectories: true)
         let catalog = try catalogOverride ?? ModelCatalog.bundled(model)
         try catalog.validate(for: model)
         let marker = directory.appendingPathComponent(".installed")
-        try StorageSafety.check(marker, under: root)
+        try StorageSafety.checkContainer(marker, root: root)
         if fm.fileExists(atPath: marker.path) { try fm.removeItem(at: marker) }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 60
@@ -158,7 +164,7 @@ actor ModelStore: ModelPreparing {
         for file in catalog.files {
             try Task.checkCancellation()
             let destination = try file.destination(under: directory)
-            try StorageSafety.check(destination, under: root)
+            try StorageSafety.checkContainer(destination, root: root)
             publish(.init(completed: completed, total: catalog.size, description: "Проверка файлов…"))
             if try file.verify(destination) { completed += file.byteCount; continue }
             guard allowNetwork else { throw VoiceError("Модель не установлена или файл повреждён. Нажмите «Скачать модель».") }
@@ -183,14 +189,14 @@ actor ModelStore: ModelPreparing {
             let staged = destination.deletingLastPathComponent().appendingPathComponent(".download-" + UUID().uuidString)
             defer { try? fm.removeItem(at: staged) }
             try fm.copyItem(at: temporary, to: staged)
-            try StorageSafety.check(destination, under: root)
+            try StorageSafety.checkContainer(destination, root: root)
             if fm.fileExists(atPath: destination.path) {
                 _ = try fm.replaceItemAt(destination, withItemAt: staged)
             } else { try fm.moveItem(at: staged, to: destination) }
             completed += file.byteCount
         }
         try Task.checkCancellation()
-        try StorageSafety.check(marker, under: root)
+        try StorageSafety.checkContainer(marker, root: root)
         try Data(catalog.fingerprint.utf8).write(to: marker, options: .atomic)
         publish(.init(completed: catalog.size, total: catalog.size, description: "Файлы проверены"))
         return directory
@@ -225,7 +231,7 @@ actor ModelStore: ModelPreparing {
     func remove(_ model: SpeechModel) throws {
         guard !working else { throw VoiceError("Сначала завершите загрузку.") }
         let directory = Self.folder(model, root: root)
-        try StorageSafety.check(directory, under: root)
+        try StorageSafety.checkContainer(directory, root: root)
         if FileManager.default.fileExists(atPath: directory.path) { try FileManager.default.removeItem(at: directory) }
     }
 }

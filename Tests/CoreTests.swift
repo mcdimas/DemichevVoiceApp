@@ -556,6 +556,24 @@ final class AudioTests: XCTestCase {
         try Data("not audio".utf8).write(to: file)
         XCTAssertThrowsError(try RecognitionEngine.validateAudio(file))
     }
+    func testRecordingParentContainerLinkCannotChangePermissionsOrPurgeFiles() throws {
+        let sandbox = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: sandbox) }
+        let outside = sandbox.appendingPathComponent("outside/Recordings", isDirectory: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: outside.path)
+        let sentinel = outside.appendingPathComponent(UUID().uuidString + ".caf")
+        try Data("keep".utf8).write(to: sentinel)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-90_000)], ofItemAtPath: sentinel.path)
+        let link = sandbox.appendingPathComponent("app-container")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outside.deletingLastPathComponent())
+        let root = link.appendingPathComponent("Recordings")
+        XCTAssertThrowsError(try RecordingFiles.prepareDirectory(root))
+        XCTAssertThrowsError(try RecordingFiles.purgeExpired(under: root))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sentinel.path))
+        let permissions = try FileManager.default.attributesOfItem(atPath: outside.path)[.posixPermissions] as? NSNumber
+        XCTAssertEqual(permissions?.intValue, 0o755)
+    }
     func testSilenceShortBuffersAndInvalidSamplesProduceNoSpeech() {
         XCTAssertFalse(RecognitionEngine.containsSignal(Array(repeating: 0, count: 16_000)))
         XCTAssertFalse(RecognitionEngine.containsSignal(Array(repeating: 1, count: 100)))
