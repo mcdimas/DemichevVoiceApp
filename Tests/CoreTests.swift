@@ -235,6 +235,11 @@ final class CatalogTests: XCTestCase {
 }
 
 final class TextTests: XCTestCase {
+    func testCaseInsensitiveDictionaryUsesActualUnicodeMatchLength() {
+        let rules = [WordReplacement(original: "Straße", replacement: "street"),
+                     WordReplacement(original: "ss", replacement: "pair")]
+        XCTAssertEqual(ReplacementPipeline.apply("STRASSE, Straße; STRASSEN. ß!", rules: rules), "street, street; STRASSEN. pair!")
+    }
     func testDictionaryPrefersWholeLongestPhraseAndCannotCascade() {
         let rules = [WordReplacement(original: "дом", replacement: "office"),
             WordReplacement(original: "дом света", replacement: "Demichev Voice"), WordReplacement(original: "office", replacement: "wrong")]
