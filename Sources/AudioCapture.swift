@@ -160,6 +160,12 @@ enum RecordingFiles {
         return min(1, max(0, (decibels + 48) / 42))
     }
 
+    // AVAudioEngine invokes taps on its audio service queue, not MainActor.
+    // Keep closure creation outside the actor and capture only the locked sink.
+    nonisolated static func inputTap(for sink: AudioFileSink) -> @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void {
+        { buffer, _ in sink.accept(buffer) }
+    }
+
     func begin(inputUID: String) throws {
         guard engine == nil else { throw VoiceError("Запись уже включена.") }
         let selected = inputUID.isEmpty ? nil : InputDevices.available().first { $0.id == inputUID }
@@ -182,7 +188,7 @@ enum RecordingFiles {
             sink = try AudioFileSink(url: file, format: format)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
         } catch { try? FileManager.default.removeItem(at: file); throw error }
-        node.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in sink.accept(buffer) }
+        node.installTap(onBus: 0, bufferSize: 1024, format: format, block: Self.inputTap(for: sink))
         do { try engine.start() }
         catch {
             node.removeTap(onBus: 0); engine.stop(); try? sink.close()

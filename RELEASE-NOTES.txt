@@ -1,4 +1,7 @@
-Demichev Voice 1.0.5
+Demichev Voice 1.0.6
+
+Исправлен сбой при получении первого буфера микрофона: обработчик звука
+больше не наследует MainActor и работает в очереди AVAudioEngine.
 
 Локальная диктовка для macOS 14+ и Apple Silicon.
 Перетащите Demichev Voice.app в Applications. При первом запуске выберите

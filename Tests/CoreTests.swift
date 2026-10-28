@@ -731,6 +731,34 @@ final class TextTests: XCTestCase {
 }
 
 final class AudioTests: XCTestCase {
+    @MainActor
+    func testInputTapAcceptsBackgroundAudioAndIgnoresBuffersAfterClose() async throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+        let sink = try AudioFileSink(url: file, format: format)
+        // Obtain the production callback from MainActor, just as begin does.
+        let tap = AudioCapture.inputTap(for: sink)
+        try await Task.detached {
+            XCTAssertFalse(Thread.isMainThread)
+            // Audio buffers stay on the callback's queue; no microphone permission or model is needed.
+            let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+            let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 128))
+            buffer.frameLength = 128
+            buffer.floatChannelData![0].initialize(repeating: 0.1, count: 128)
+            let time = AVAudioTime(sampleTime: 0, atRate: 16_000)
+            tap(buffer, time)
+            XCTAssertNil(sink.failure())
+            XCTAssertGreaterThan(sink.meter(), 0)
+            XCTAssertEqual(buffer.frameLength, 128)
+            try sink.close()
+            // A late callback must not reopen or append to the finished recording.
+            tap(buffer, time)
+        }.value
+        XCTAssertEqual(try AVAudioFile(forReading: file).length, 128)
+        XCTAssertNil(sink.failure())
+    }
+
     func testFullLengthCaptureResamplesWithinRecognitionLimit() throws {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
         defer { try? FileManager.default.removeItem(at: file) }
